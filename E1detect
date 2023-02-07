@@ -6,17 +6,17 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 import numpy as np
 
-servo_pin=20
+servo_pin=20 #pin to send power to RPi
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(servo_pin, GPIO.OUT)
-pwm = GPIO.PWM(servo_pin, 50)
+GPIO.setmode(GPIO.BCM) #naming convention for RPi ports
+GPIO.setup(servo_pin, GPIO.OUT) #set Pin 20 to output mode
+pwm = GPIO.PWM(servo_pin, 50) #channel, frequency for pwm signal
 
 class Scanner(Node):
 
     def __init__(self):
-        super().__init__('scanner')
-        self.subscription = self.create_subscription(
+        super().__init__('scanner') #gives access to parent class
+        self.subscription = self.create_subscription( #subscribes to a sensor data
             LaserScan,
             'scan',
             self.listener_callback,
@@ -24,7 +24,7 @@ class Scanner(Node):
         self.subscription  # prevent unused variable warning
     
     def servo_sweep(self, angle):
-        duty = float(angle) / 18 + 2.5
+        duty = float(angle) / 18 + 2.5 #0 degrees is 2.5, 180 degrees is 12.5
         pwm.ChangeDutyCycle(duty)
         
 

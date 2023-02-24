@@ -29,10 +29,33 @@ rotatechange = 0.1
 speedchange = 0.05
 occ_bins = [-1, 0, 100, 101]
 stop_distance = 0.25
-front_angle = 30
-front_angles = range(-front_angle,front_angle+1,1)
+front_angle = 179
+front_angle = 0
+front_angles = range(front_angle - 10,front_angle + 10,1)
+
+left_angle = 269
+right_angle = 79
+back_angle = 179
+back_angles = range(back_angle - 10,back_angle + 10,1)
+
+
+
+
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
+
+nav_op = [
+    [(0.40, 0)],
+    [(0.40, -90), (1.320, 0)],
+    [(1.070, -90), (1.320, 0)],
+    [(1.070, -90), (0.40, 0)],
+    [(1.920, -90), (0.40, 90), (0.40, 0)],
+]
+
+rev_op = [
+    [(0.40, 0)],
+    [()]
+]
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -96,13 +119,19 @@ class AutoNav(Node):
             qos_profile_sensor_data)
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
+        self.one_meter_counter = 0
+        print("__init__ end")
 
+
+        #UI 
+        self.table_number = 0
+        self.table_input = "0"
+        
 
     def odom_callback(self, msg):
         # self.get_logger().info('In odom_callback')
         orientation_quat =  msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
-
 
     def occ_callback(self, msg):
         # self.get_logger().info('In occ_callback')
@@ -121,22 +150,23 @@ class AutoNav(Node):
         # self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width,order='F'))
         self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width))
         # print to file
-        # np.savetxt(mapfile, self.occdata)
-
+        #np.savetxt(mapfile, self.occdata)
 
     def scan_callback(self, msg):
-        # self.get_logger().info('In scan_callback')
+        #print('In scan_callback')
         # create numpy array
         self.laser_range = np.array(msg.ranges)
         # print to file
-        # np.savetxt(scanfile, self.laser_range)
+        #np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
-        self.laser_range[self.laser_range==0] = np.nan
-
+        #self.laser_range[self.laser_range==0] = np.nan
+        #print(self.laser_range)
 
     # function to rotate the TurtleBot
     def rotatebot(self, rot_angle):
+        rot_angle -= 0.0
         # self.get_logger().info('In rotatebot')
+
         # create Twist object
         twist = Twist()
         
@@ -187,7 +217,6 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
-
     def pick_direction(self):
         # self.get_logger().info('In pick_direction')
         if self.laser_range.size != 0:
@@ -211,6 +240,19 @@ class AutoNav(Node):
         time.sleep(1)
         self.publisher_.publish(twist)
 
+    def movebot(self, speed=speedchange, direction=1):
+        # self.get_logger().info('In movebot')
+
+        # start moving
+        self.get_logger().info('Start moving')
+        twist = Twist()
+        twist.linear.x = speed * direction
+        twist.angular.z = 0.0
+        # -0.05
+        # not sure if this is really necessary, but things seem to work more
+        # reliably with this
+        time.sleep(1)
+        self.publisher_.publish(twist)
 
     def stopbot(self):
         self.get_logger().info('In stopbot')
@@ -229,14 +271,26 @@ class AutoNav(Node):
 
             # find direction with the largest distance from the Lidar,
             # rotate to that direction, and start moving
-            self.pick_direction()
+            #self.pick_direction()
 
+            vars = nav_op[self.table_number-1]
+            i = 0
+            #time.sleep(0)
             while rclpy.ok():
+                if(i >= len(vars)):
+                    break
                 if self.laser_range.size != 0:
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
-                    lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
-                    # self.get_logger().info('Distances: %s' % str(lri))
+
+                    print(self.laser_range[front_angle])
+                    print(vars[i][0])
+                    speed = speedchange * (vars[i][0] - self.laser_range[back_angle]) * 0.1
+                    print(speed)
+
+                    #print(vars[i])
+                    lri = (self.laser_range[front_angle]<float(vars[i][0])).nonzero()
+                    self.get_logger().info('Distances: %s' % str(lri))
 
                     # if the list is not empty
                     if(len(lri[0])>0):
@@ -245,7 +299,51 @@ class AutoNav(Node):
                         # find direction with the largest distance from the Lidar
                         # rotate to that direction
                         # start moving
-                        self.pick_direction()
+                        #self.pick_direction()
+                        self.rotatebot(vars[i][1])
+                        i += 1
+                    else:
+                        self.movebot(speed=speed)
+                    
+                # allow the callback functions to run
+                rclpy.spin_once(self)
+            
+
+            while(1):
+                if(self.check_can() == False):
+                    time.sleep(0.5)
+                    continue
+                else:
+                    break
+            
+
+            #vars = reverse_op[self.table_number]
+            #i -= 1
+            while rclpy.ok():
+                if(i < 0):
+                    break
+                if self.laser_range.size != 0:
+                    # check distances in front of TurtleBot and find values less
+                    # than stop_distance
+                    print(self.laser_range[back_angle])
+                    print(vars[i][0])
+                    speed = speedchange * (vars[i][0] - self.laser_range[back_angle]) * 0.7
+                    print(speed)
+                    lri = (self.laser_range[back_angle]<float(vars[i][0])).nonzero()
+                    self.get_logger().info('Distances: %s' % str(lri))
+
+                    # if the list is not empty
+                    if(len(lri[0])>0):
+                        # stop moving
+                        self.stopbot()
+                        # find direction with the largest distance from the Lidar
+                        # rotate to that direction
+                        # start moving
+                        #self.pick_direction()
+                        self.rotatebot(-vars[i][1])
+                        i -= 1
+                    else:
+                        self.movebot(speed=speed, direction=-1)
                     
                 # allow the callback functions to run
                 rclpy.spin_once(self)
@@ -259,11 +357,65 @@ class AutoNav(Node):
             self.stopbot()
 
 
+
+    def UI(self):
+        try:
+            while(1):
+
+                while(1):
+                    if(self.check_can() == False):
+                        time.sleep(0.5)
+                        continue
+                    else:
+                        break
+
+                print("#"*20)
+                self.table_input = input("#    Please Enter Table Number After Placing the Can    #")
+                print("#"*20)
+                print(f"#   \"{self.table_input}\" was received.    #")
+                if(self.table_input.isdigit() == False):
+                    print("#    Only Input Number from 1 to 6    #")
+                    continue
+                self.table_number = int(self.table_input)
+                if(self.table_number > 6 or self.table_number < 1):
+                    print("#    Only Input Number from 1 to 6    #")
+                    continue
+                self.mover()
+
+
+        except Exception as e:
+            print(e)
+        finally:
+            self.stopbot()
+        
+        return
+
+    def check_can(self):
+        #true: can present; false: can not present
+
+        #for debugging only
+        if(input("can present? [y|n] ") == "y"):
+            return True
+        else:
+            return False
+
+    def test(self):
+        try:
+            while(1):
+                self.rotatebot(90)
+                time.sleep(5)
+        except Exception as e:
+            print(e)
+        finally:
+            self.stopbot()
+
 def main(args=None):
+
     rclpy.init(args=args)
 
     auto_nav = AutoNav()
-    auto_nav.mover()
+    #auto_nav.test()
+    auto_nav.UI()
 
     # create matplotlib figure
     # plt.ion()
@@ -274,7 +426,7 @@ def main(args=None):
     # when the garbage collector destroys the node object)
     auto_nav.destroy_node()
     rclpy.shutdown()
-
+    #GPIO.cleanup()
 
 if __name__ == '__main__':
     main()

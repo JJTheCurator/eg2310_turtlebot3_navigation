@@ -33,8 +33,7 @@ front_angle = 179
 front_angle = 0
 front_angles = range(front_angle - 10,front_angle + 10,1)
 
-left_angle = 269
-right_angle = 79
+left_angle = 79
 back_angle = 179
 back_angles = range(back_angle - 10,back_angle + 10,1)
 
@@ -44,17 +43,22 @@ back_angles = range(back_angle - 10,back_angle + 10,1)
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
 
-nav_op = [
-    [(0.40, 0)],
-    [(0.40, -90), (1.320, 0)],
-    [(1.070, -90), (1.320, 0)],
-    [(1.070, -90), (0.40, 0)],
-    [(1.920, -90), (0.40, 90), (0.40, 0)],
+forward_op = [
+    [(0.30, 0)],
+    [(0.30, -90), (1.120, 0)],
+    [(1.25, -90), (1.120, 0)],
+    [(1.25, -90), (0.40, 0)],
+    [(1.3, -90), (0.40, -90), (0.40, 90), (0.40, 90), (0.3, 0)],
+    [],
 ]
 
-rev_op = [
-    [(0.40, 0)],
-    [()]
+reverse_op = [
+    [()],
+    [(0.5, 90)],
+    [(0.5, 90)],
+    [(0.5, 90)],
+    [(0.6, 90), (0.5, 90)],
+    [],
 ]
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
@@ -159,12 +163,13 @@ class AutoNav(Node):
         # print to file
         #np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
-        #self.laser_range[self.laser_range==0] = np.nan
+        self.laser_range[self.laser_range==0] = np.nan
         #print(self.laser_range)
 
     # function to rotate the TurtleBot
     def rotatebot(self, rot_angle):
-        rot_angle -= 0.0
+        if(rot_angle == 0):
+            return
         # self.get_logger().info('In rotatebot')
 
         # create Twist object
@@ -242,7 +247,6 @@ class AutoNav(Node):
 
     def movebot(self, speed=speedchange, direction=1):
         # self.get_logger().info('In movebot')
-
         # start moving
         self.get_logger().info('Start moving')
         twist = Twist()
@@ -251,7 +255,7 @@ class AutoNav(Node):
         # -0.05
         # not sure if this is really necessary, but things seem to work more
         # reliably with this
-        time.sleep(1)
+        time.sleep(0.1)
         self.publisher_.publish(twist)
 
     def stopbot(self):
@@ -263,6 +267,24 @@ class AutoNav(Node):
         # time.sleep(1)
         self.publisher_.publish(twist)
 
+    def docker(self):
+        print(f"Current: {self.laser_range[left_angle]}")
+        print(f"Target: 0.5")
+        distance = self.laser_range[left_angle] - vars[i][0]
+        print(f"distance: {distance}")
+        if(distance >= 1.0):
+            speed = 0.1
+        if(distance <= 0.75):
+            speed = 0.05
+        if(distance <= 0.5):
+            speed = 0.025
+        else:
+            speed = speedchange
+        print(f"speed: {speed}")
+
+        self.laser_range[left_angle]
+        pass
+
 
     def mover(self):
         try:
@@ -273,7 +295,7 @@ class AutoNav(Node):
             # rotate to that direction, and start moving
             #self.pick_direction()
 
-            vars = nav_op[self.table_number-1]
+            vars = forward_op[self.table_number-1]
             i = 0
             #time.sleep(0)
             while rclpy.ok():
@@ -283,24 +305,37 @@ class AutoNav(Node):
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
 
-                    print(self.laser_range[front_angle])
-                    print(vars[i][0])
-                    speed = speedchange * (vars[i][0] - self.laser_range[back_angle]) * 0.1
-                    print(speed)
+                    current = self.laser_range[back_angle] 
+                    target = vars[i][0]
+                    distance = current - target
+                    print(f"distance: {distance} = {current} - {target}") 
+                    if(distance >= 1.0):
+                        speed = 0.1
+                    elif(distance <= 0.75):
+                        speed = 0.6
+                    elif(distance <= 0.5):
+                        speed = 0.025
+                    else:
+                        speed = speedchange
+                    print(f"speed: {speed}")
 
                     #print(vars[i])
-                    lri = (self.laser_range[front_angle]<float(vars[i][0])).nonzero()
-                    self.get_logger().info('Distances: %s' % str(lri))
+                    #lri = (self.laser_range[front_angle]<float(vars[i][0])).nonzero()
+                    #self.get_logger().info('Distances: %s' % str(lri))
 
                     # if the list is not empty
-                    if(len(lri[0])>0):
+                    if(distance < 0):
                         # stop moving
                         self.stopbot()
                         # find direction with the largest distance from the Lidar
                         # rotate to that direction
                         # start moving
                         #self.pick_direction()
-                        self.rotatebot(vars[i][1])
+
+                        #rot_angle += 5.0
+                        #self.rotatebot(vars[i][1])
+                        if(vars[i][1] != 0):
+                            self.rotatebot(vars[i][1]+4.0)
                         i += 1
                     else:
                         self.movebot(speed=speed)
@@ -310,38 +345,47 @@ class AutoNav(Node):
             
 
             while(1):
-                if(self.check_can() == False):
+                if(self.check_can() == True):
                     time.sleep(0.5)
                     continue
                 else:
                     break
             
 
-            #vars = reverse_op[self.table_number]
-            #i -= 1
+            vars = reverse_op[self.table_number-1]
+            i = 0
             while rclpy.ok():
-                if(i < 0):
+                if(i >= len(vars[i])):
                     break
                 if self.laser_range.size != 0:
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
-                    print(self.laser_range[back_angle])
-                    print(vars[i][0])
-                    speed = speedchange * (vars[i][0] - self.laser_range[back_angle]) * 0.7
-                    print(speed)
-                    lri = (self.laser_range[back_angle]<float(vars[i][0])).nonzero()
-                    self.get_logger().info('Distances: %s' % str(lri))
+                    current = self.laser_range[back_angle] 
+                    target = vars[i][0]
+                    distance = current - target
+                    print(f"distance: {distance} = {current} - {target}")
+                    if(distance >= 1.0):
+                        speed = 0.1
+                    elif(distance <= 0.75):
+                        speed = 0.06
+                    elif(distance <= 0.5):
+                        speed = 0.025
+                    print(f"speed: {speed}")
+                    #lri = (self.laser_range[back_angle]<float(vars[i][0])).nonzero()
+                    #self.get_logger().info('Distances: %s' % str(lri))
 
                     # if the list is not empty
-                    if(len(lri[0])>0):
+                    if(distance < 0):
                         # stop moving
                         self.stopbot()
                         # find direction with the largest distance from the Lidar
                         # rotate to that direction
                         # start moving
                         #self.pick_direction()
-                        self.rotatebot(-vars[i][1])
-                        i -= 1
+                        #self.rotatebot(vars[i][1])
+                        if(vars[i][1] != 0):
+                            self.rotatebot(vars[i][1]-4.0)
+                        i += 1
                     else:
                         self.movebot(speed=speed, direction=-1)
                     
@@ -361,7 +405,6 @@ class AutoNav(Node):
     def UI(self):
         try:
             while(1):
-
                 while(1):
                     if(self.check_can() == False):
                         time.sleep(0.5)
@@ -381,6 +424,7 @@ class AutoNav(Node):
                     print("#    Only Input Number from 1 to 6    #")
                     continue
                 self.mover()
+                self.docker()
 
 
         except Exception as e:
@@ -398,16 +442,6 @@ class AutoNav(Node):
             return True
         else:
             return False
-
-    def test(self):
-        try:
-            while(1):
-                self.rotatebot(90)
-                time.sleep(5)
-        except Exception as e:
-            print(e)
-        finally:
-            self.stopbot()
 
 def main(args=None):
 

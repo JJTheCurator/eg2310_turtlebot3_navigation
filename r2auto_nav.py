@@ -29,7 +29,7 @@ rotatechange = 0.1
 speedchange = 0.05
 occ_bins = [-1, 0, 100, 101]
 stop_distance = 0.25
-front_angle = 179
+#front_angle = 179
 front_angle = 0
 front_angles = range(front_angle - 10,front_angle + 10,1)
 
@@ -54,7 +54,7 @@ forward_op = [
 
 reverse_op = [
     [()],
-    [(0.5, 90)],
+    [(0.5, 90), (0.4, 0)],
     [(0.5, 90)],
     [(0.5, 90)],
     [(0.6, 90), (0.5, 90)],
@@ -164,7 +164,7 @@ class AutoNav(Node):
         #np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
         self.laser_range[self.laser_range==0] = np.nan
-        #print(self.laser_range)
+        print(self.laser_range)
 
     # function to rotate the TurtleBot
     def rotatebot(self, rot_angle):
@@ -270,7 +270,7 @@ class AutoNav(Node):
     def docker(self):
         print(f"Current: {self.laser_range[left_angle]}")
         print(f"Target: 0.5")
-        distance = self.laser_range[left_angle] - vars[i][0]
+        distance = self.laser_range[left_angle] - 0.5
         print(f"distance: {distance}")
         if(distance >= 1.0):
             speed = 0.1
@@ -305,16 +305,16 @@ class AutoNav(Node):
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
 
-                    current = self.laser_range[back_angle] 
+                    current = self.laser_range[front_angle] 
                     target = vars[i][0]
                     distance = current - target
                     print(f"distance: {distance} = {current} - {target}") 
                     if(distance >= 1.0):
                         speed = 0.1
-                    elif(distance <= 0.75):
-                        speed = 0.6
-                    elif(distance <= 0.5):
-                        speed = 0.025
+                    elif(distance <= 0.3):
+                        speed = 0.03
+                    elif(distance <= 0.6):
+                        speed = 0.7
                     else:
                         speed = speedchange
                     print(f"speed: {speed}")
@@ -342,7 +342,7 @@ class AutoNav(Node):
                     
                 # allow the callback functions to run
                 rclpy.spin_once(self)
-            
+            #delivering end        
 
             while(1):
                 if(self.check_can() == True):
@@ -352,6 +352,7 @@ class AutoNav(Node):
                     break
             
 
+            ##docking
             vars = reverse_op[self.table_number-1]
             i = 0
             while rclpy.ok():
@@ -366,10 +367,10 @@ class AutoNav(Node):
                     print(f"distance: {distance} = {current} - {target}")
                     if(distance >= 1.0):
                         speed = 0.1
-                    elif(distance <= 0.75):
-                        speed = 0.06
-                    elif(distance <= 0.5):
-                        speed = 0.025
+                    elif(distance <= 0.3):
+                        speed = 0.03
+                    elif(distance <= 0.6):
+                        speed = 0.7
                     print(f"speed: {speed}")
                     #lri = (self.laser_range[back_angle]<float(vars[i][0])).nonzero()
                     #self.get_logger().info('Distances: %s' % str(lri))

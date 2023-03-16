@@ -37,6 +37,9 @@ left_angle = 79
 back_angle = 179
 back_angles = range(back_angle - 10,back_angle + 10,1)
 
+ROTATE_BIAS_DEGREE = 4.0
+DRINK_PRESENT = 1
+DRINK_NOT_PRESENT = 0
 
 
 
@@ -125,13 +128,44 @@ class AutoNav(Node):
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
         self.one_meter_counter = 0
+
+        self.push_button_subscription = self.create_subscription(
+            bool,
+            'push_button',
+            self.push_button_callback,
+            10
+        )
+        self.push_button_subscription
+
+        self.nfc_subscription = self.create_subscription(
+            bool,
+            "nfc",
+            self.nfc_callback,
+            10
+        )
+        self.nfc_subscription
+
         print("__init__ end")
 
 
-        #UI 
+        #UI logic
         self.table_number = 0
         self.table_input = "0"
+
+        #navigation logic
+        self.speed = 0.0
+
+        #drink can logic
+        self.is_drink_present = False
         
+    def check_drink(self, exit_condition):
+        while(1):
+            if(self.is_drink_present != exit_condition):
+                time.sleep(0.05)
+        if(exit_condition == DRINK_NOT_PRESENT):
+            print("Drink is not present, proceeding.")
+        else:
+            print("Drink is present, proceeding")
 
     def odom_callback(self, msg):
         # self.get_logger().info('In odom_callback')
@@ -166,6 +200,12 @@ class AutoNav(Node):
         # replace 0's with nan
         self.laser_range[self.laser_range==0] = np.nan
         print(self.laser_range)
+
+    def push_button_callback(self, msg):
+        self.is_drink_present = msg.data
+
+    def nfc_callback(self, msg):
+        self.docking_phase_two()
 
     # function to rotate the TurtleBot
     def rotatebot(self, rot_angle):
@@ -268,26 +308,18 @@ class AutoNav(Node):
         # time.sleep(1)
         self.publisher_.publish(twist)
 
-    def docker(self):
-        print(f"Current: {self.laser_range[left_angle]}")
-        print(f"Target: 0.5")
-        distance = self.laser_range[left_angle] - 0.5
-        print(f"distance: {distance}")
-        if(distance >= 1.0):
-            speed = 0.1
-        if(distance <= 0.75):
-            speed = 0.05
-        if(distance <= 0.5):
-            speed = 0.025
+    def choose_speed(self, distance):
+        if(distance <= 0.3):
+            self.speed = 0.03
+        elif(distance <= 0.6):
+            self.speed = 0.2
+        elif(distance <= 1.0):
+            self.speed = 0.5        
         else:
-            speed = speedchange
-        print(f"speed: {speed}")
+            self.speed = 0.8
+        print(f"speed: {self.speed}")
 
-        self.laser_range[left_angle]
-        pass
-
-
-    def mover(self):
+    def deliver(self):
         try:
             # initialize variable to write elapsed time to file
             # contourCheck = 1
@@ -298,7 +330,6 @@ class AutoNav(Node):
 
             vars = forward_op[self.table_number-1]
             i = 0
-            #time.sleep(0)
             while rclpy.ok():
                 if(i >= len(vars)):
                     break
@@ -309,37 +340,19 @@ class AutoNav(Node):
                     current = self.laser_range[front_angle] 
                     target = vars[i][0]
                     distance = current - target
-                    print(f"distance: {distance} = {current} - {target}") 
-                    if(distance >= 1.0):
-                        speed = 0.1
-                    elif(distance <= 0.3):
-                        speed = 0.03
-                    elif(distance <= 0.6):
-                        speed = 0.7
-                    else:
-                        speed = speedchange
-                    print(f"speed: {speed}")
-
-                    #print(vars[i])
-                    #lri = (self.laser_range[front_angle]<float(vars[i][0])).nonzero()
-                    #self.get_logger().info('Distances: %s' % str(lri))
-
+                    print(f"distance: {distance} = {current} - {target}")
+                    
+                    self.choose_speed(distance)
                     # if the list is not empty
                     if(distance < 0):
                         # stop moving
                         self.stopbot()
-                        # find direction with the largest distance from the Lidar
-                        # rotate to that direction
-                        # start moving
-                        #self.pick_direction()
 
-                        #rot_angle += 5.0
-                        #self.rotatebot(vars[i][1])
                         if(vars[i][1] != 0):
-                            self.rotatebot(vars[i][1]+4.0)
+                            self.rotatebot(vars[i][1]+ROTATE_BIAS_DEGREE)
                         i += 1
                     else:
-                        self.movebot(speed=speed)
+                        self.movebot(speed=self.speed)
                     
                 # allow the callback functions to run
                 rclpy.spin_once(self)
@@ -351,9 +364,22 @@ class AutoNav(Node):
                     continue
                 else:
                     break
-            
 
-            ##docking
+        except Exception as e:
+            print(e)
+        
+        # Ctrl-c detected
+        finally:
+            # stop moving
+            self.stopbot()
+
+    def docking_phase_one(self):
+        #returning to the base
+        #phase two is docking into the dispenser
+        #which is called by nfc_callback as soon as it detects rfid
+        
+        try:
+            #returning to the dispenser
             vars = reverse_op[self.table_number-1]
             i = 0
             while rclpy.ok():
@@ -366,13 +392,7 @@ class AutoNav(Node):
                     target = vars[i][0]
                     distance = current - target
                     print(f"distance: {distance} = {current} - {target}")
-                    if(distance >= 1.0):
-                        speed = 0.1
-                    elif(distance <= 0.3):
-                        speed = 0.03
-                    elif(distance <= 0.6):
-                        speed = 0.7
-                    print(f"speed: {speed}")
+                    self.choose_speed(distance)
                     #lri = (self.laser_range[back_angle]<float(vars[i][0])).nonzero()
                     #self.get_logger().info('Distances: %s' % str(lri))
 
@@ -380,40 +400,54 @@ class AutoNav(Node):
                     if(distance < 0):
                         # stop moving
                         self.stopbot()
-                        # find direction with the largest distance from the Lidar
-                        # rotate to that direction
-                        # start moving
-                        #self.pick_direction()
-                        #self.rotatebot(vars[i][1])
+
                         if(vars[i][1] != 0):
-                            self.rotatebot(vars[i][1]-4.0)
+                            self.rotatebot(vars[i][1]-ROTATE_BIAS_DEGREE)
                         i += 1
                     else:
-                        self.movebot(speed=speed, direction=-1)
+                        self.movebot(speed=self.speed, direction=-1)
                     
                 # allow the callback functions to run
                 rclpy.spin_once(self)
 
         except Exception as e:
             print(e)
-        
-        # Ctrl-c detected
         finally:
-            # stop moving
             self.stopbot()
 
+    def docking_phase_two(self):
+        try:
+            #returning to the dispenser
+            #measured distance: 14.6cm
 
+            while rclpy.ok():
+                if self.laser_range.size != 0:
+                    
+                    current = self.laser_range[back_angle] 
+                    target = 0.3
+                    distance = current - target
+                    print(f"distance: {distance} = {current} - {target}")
+                    #lri = (self.laser_range[back_angle]<float(vars[i][0])).nonzero()
+                    #self.get_logger().info('Distances: %s' % str(lri))
+
+                    # if the list is not empty
+                    if(distance < 0):
+                        # stop moving
+                        self.stopbot()
+                    else:
+                        self.movebot(speed=self.speed, direction=-1)
+                    
+                # allow the callback functions to run
+                rclpy.spin_once(self)
+
+        except Exception as e:
+            print(e)
+        finally:
+            self.stopbot()
 
     def UI(self):
         try:
             while(1):
-                while(1):
-                    if(self.check_can() == False):
-                        time.sleep(0.5)
-                        continue
-                    else:
-                        break
-
                 print("#"*20)
                 self.table_input = input("#    Please Enter Table Number After Placing the Can    #")
                 print("#"*20)
@@ -425,19 +459,28 @@ class AutoNav(Node):
                 if(self.table_number > 6 or self.table_number < 1):
                     print("#    Only Input Number from 1 to 6    #")
                     continue
-                self.mover()
-                self.docker()
-
-
+                break
         except Exception as e:
             print(e)
         finally:
             self.stopbot()
         
-        return
+    def procedure_loop(self):
+        try:
+            while(1):
+                self.UI()
+                self.check_drink(exit_condition=DRINK_PRESENT)
+                self.deliver()
+                self.check_drink(exit_condition=DRINK_NOT_PRESENT)
+                self.docking_phase_one()
+        except Exception as e:
+            print(e)
+        finally:
+            self.stopbot()
 
     def check_can(self):
         #true: can present; false: can not present
+        #return is_drink_present
 
         #for debugging only
         if(input("can present? [y|n] ") == "y"):
@@ -451,7 +494,7 @@ def main(args=None):
 
     auto_nav = AutoNav()
     #auto_nav.test()
-    auto_nav.UI()
+    auto_nav.procedure_loop()
 
     # create matplotlib figure
     # plt.ion()

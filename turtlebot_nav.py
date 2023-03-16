@@ -33,6 +33,7 @@ stop_distance = 0.25
 front_angle = 0
 front_angles = range(front_angle - 10,front_angle + 10,1)
 
+right_angle = 269
 left_angle = 79
 back_angle = 179
 back_angles = range(back_angle - 10,back_angle + 10,1)
@@ -51,18 +52,18 @@ forward_op = [
     [(0.30, -90), (1.120, 0)],
     [(1.25, -90), (1.120, 0)],
     [(1.25, -90), (0.40, 0)],
-    [(1.3, -90), (0.40, -90), (0.40, 90), (0.40, 90), (0.3, 0)],
-    [],
+    [(1.25, -90), (0.40, -90), (0.40, 90), (0.40, 90), (0.30, 0)],
+    [(0.30, -90), (0.40, 90)],
 ]
 
 
 reverse_op = [
-    [()],
-    [(0.5, 90), (0.4, 0)],
-    [(0.5, 90)],
-    [(0.5, 90)],
-    [(0.6, 90), (0.5, 90)],
-    [],
+    [(0.2, 0)],
+    [(0.5, 90), (0.2, 0)],
+    [(0.5, 90), (0.2, 0)],
+    [(0.5, 90), (0.2, 0)],
+    [(0.4, 90), (0.8, 90), (0.4, 90), (0.5, 90), (0.2, 90)],
+    [(0.4, 90), (0.4, 90), (0.5, 90), (0.2, 90)],
 ]
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
@@ -109,6 +110,7 @@ class AutoNav(Node):
         self.roll = 0
         self.pitch = 0
         self.yaw = 0
+        self.x = 0
         
         # create subscription to track occupancy
         self.occ_subscription = self.create_subscription(
@@ -133,7 +135,7 @@ class AutoNav(Node):
             bool,
             'push_button',
             self.push_button_callback,
-            10
+            10,
         )
         self.push_button_subscription
 
@@ -141,12 +143,11 @@ class AutoNav(Node):
             bool,
             "nfc",
             self.nfc_callback,
-            10
+            10,
         )
         self.nfc_subscription
 
         print("__init__ end")
-
 
         #UI logic
         self.table_number = 0
@@ -171,6 +172,7 @@ class AutoNav(Node):
         # self.get_logger().info('In odom_callback')
         orientation_quat =  msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
+        self.x = msg.pose.pose.position.x
 
     def occ_callback(self, msg):
         # self.get_logger().info('In occ_callback')
@@ -203,11 +205,9 @@ class AutoNav(Node):
 
     def push_button_callback(self, msg):
         self.is_drink_present = msg.data
-
     def nfc_callback(self, msg):
         self.docking_phase_two()
-
-    # function to rotate the TurtleBot
+    
     def rotatebot(self, rot_angle):
         if(rot_angle == 0):
             return
@@ -263,6 +263,18 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
+    def rotatebot_with_one_time_distance_checking(self, rot_angle, checking_distance, checking_index):
+        #checking the distance at checking_index inside lidar data against the checking_distance.
+        angle = rot_angle*0.95
+        remaining_angle = rot_angle-angle
+        while(1):
+            if(angle < 0.5):
+                break
+            self.rotatebot(angle)
+            if(self.laser_range[checking_index] < checking_distance):
+                angle = remaining_angle * 0.95
+                remaining_angle = rot_angle - angle
+
     def pick_direction(self):
         # self.get_logger().info('In pick_direction')
         if self.laser_range.size != 0:
@@ -299,6 +311,48 @@ class AutoNav(Node):
         time.sleep(0.1)
         self.publisher_.publish(twist)
 
+    def move_distance_by_odom_then_varify_using_lidar(self, target_distance, lidar_checking_index, direction=1, is_using_lidar_to_check=False, distance_tolerance=0.05):
+        #move forward if direction is one, speed is determined by choose_speed
+        initial_x = self.x
+        try:
+            while rclpy.ok():
+                if self.laser_range.size != 0:
+                    final_x = self.x
+                    moved_distance = final_x - initial_x
+                    print(f"moved_distance: {moved_distance} = {final_x} - {initial_x}")
+                    
+                    remaining_distance = target_distance - moved_distance
+                    self.choose_speed(remaining_distance)
+                    # if the list is not empty
+                    if(remaining_distance < 0 or self.laser_range[lidar_checking_index] <= 0.2):
+                        self.stopbot()
+                        break
+                    else:
+                        self.movebot(speed=self.speed, direction=direction)
+                rclpy.spin_once(self)
+
+            if(is_using_lidar_to_check == False):
+                return
+
+            while rclpy.ok():
+                if self.laser_range.size != 0:
+                    current = self.laser_range[lidar_checking_index] 
+                    distance = current - target_distance
+                    print(f"distance: {distance} = {current} - {target_distance}")
+                    self.choose_speed(distance)
+                    # if the list is not empty
+                    if(abs(distance) < distance_tolerance):
+                        self.stopbot()
+                        return
+                    else:
+                        self.movebot(speed=self.speed, direction=distance/abs(distance))
+                rclpy.spin_once(self)
+            
+        except Exception as e:
+            print(e)
+        finally:
+            self.stopbot()
+
     def stopbot(self):
         self.get_logger().info('In stopbot')
         # publish to cmd_vel to move TurtleBot
@@ -319,24 +373,47 @@ class AutoNav(Node):
             self.speed = 0.8
         print(f"speed: {self.speed}")
 
+    def deliver_phase_two(self):
+        #additional procedure for table 6
+        try:
+            self.move_distance_by_odom_then_varify_using_lidar(0.94, front_angle, direction=1, is_using_lidar_to_check=True)
+            while rclpy.ok():
+                if self.laser_range.size != 0:
+                    table_6_right_edge = self.laser_range[left_angle]
+                    if(table_6_right_edge <= 0.88):
+                       self.stopbot() 
+                       self.rotatebot(90+ROTATE_BIAS_DEGREE) 
+                       break
+                    print(f"table_6_right_edge: {table_6_right_edge}")
+                    
+                    #in case it fails to detect in the first run
+                    #make it do shuttle run until it detects
+                    front_distance = self.laser_range[front_angle]
+                    direction = 1
+                    if(front_distance <= 0.34):
+                        direction = -1
+                    if(front_distance >= 0.94):
+                        direction = 1
+                    speed = 0.3
+                    self.movebot(speed,direction)
+                rclpy.spin_once(self)
+           
+            self.move_distance_by_odom_then_varify_using_lidar(1.92, front_angle, direction=1, is_using_lidar_to_check=True)
+
+
+        except Exception as e:
+            print(e)
+        finally:
+            self.stopbot()
+
     def deliver(self):
         try:
-            # initialize variable to write elapsed time to file
-            # contourCheck = 1
-
-            # find direction with the largest distance from the Lidar,
-            # rotate to that direction, and start moving
-            #self.pick_direction()
-
             vars = forward_op[self.table_number-1]
             i = 0
             while rclpy.ok():
                 if(i >= len(vars)):
                     break
                 if self.laser_range.size != 0:
-                    # check distances in front of TurtleBot and find values less
-                    # than stop_distance
-
                     current = self.laser_range[front_angle] 
                     target = vars[i][0]
                     distance = current - target
@@ -345,71 +422,29 @@ class AutoNav(Node):
                     self.choose_speed(distance)
                     # if the list is not empty
                     if(distance < 0):
-                        # stop moving
                         self.stopbot()
-
                         if(vars[i][1] != 0):
                             self.rotatebot(vars[i][1]+ROTATE_BIAS_DEGREE)
                         i += 1
                     else:
                         self.movebot(speed=self.speed)
-                    
-                # allow the callback functions to run
                 rclpy.spin_once(self)
-            #delivering end        
-
-            while(1):
-                if(self.check_can() == True):
-                    time.sleep(0.5)
-                    continue
-                else:
-                    break
-
+            #special case for table 6
+            if(self.table_number == 6):
+                self.deliver_phase_two()
         except Exception as e:
             print(e)
-        
-        # Ctrl-c detected
         finally:
-            # stop moving
             self.stopbot()
 
     def docking_phase_one(self):
-        #returning to the base
-        #phase two is docking into the dispenser
-        #which is called by nfc_callback as soon as it detects rfid
-        
         try:
             #returning to the dispenser
             vars = reverse_op[self.table_number-1]
             i = 0
             while rclpy.ok():
-                if(i >= len(vars[i])):
-                    break
-                if self.laser_range.size != 0:
-                    # check distances in front of TurtleBot and find values less
-                    # than stop_distance
-                    current = self.laser_range[back_angle] 
-                    target = vars[i][0]
-                    distance = current - target
-                    print(f"distance: {distance} = {current} - {target}")
-                    self.choose_speed(distance)
-                    #lri = (self.laser_range[back_angle]<float(vars[i][0])).nonzero()
-                    #self.get_logger().info('Distances: %s' % str(lri))
-
-                    # if the list is not empty
-                    if(distance < 0):
-                        # stop moving
-                        self.stopbot()
-
-                        if(vars[i][1] != 0):
-                            self.rotatebot(vars[i][1]-ROTATE_BIAS_DEGREE)
-                        i += 1
-                    else:
-                        self.movebot(speed=self.speed, direction=-1)
-                    
-                # allow the callback functions to run
+                self.move_distance_by_odom_then_varify_using_lidar
                 rclpy.spin_once(self)
-
         except Exception as e:
             print(e)
         finally:
@@ -420,26 +455,7 @@ class AutoNav(Node):
             #returning to the dispenser
             #measured distance: 14.6cm
 
-            while rclpy.ok():
-                if self.laser_range.size != 0:
-                    
-                    current = self.laser_range[back_angle] 
-                    target = 0.3
-                    distance = current - target
-                    print(f"distance: {distance} = {current} - {target}")
-                    #lri = (self.laser_range[back_angle]<float(vars[i][0])).nonzero()
-                    #self.get_logger().info('Distances: %s' % str(lri))
-
-                    # if the list is not empty
-                    if(distance < 0):
-                        # stop moving
-                        self.stopbot()
-                    else:
-                        self.movebot(speed=self.speed, direction=-1)
-                    
-                # allow the callback functions to run
-                rclpy.spin_once(self)
-
+            self.move_distance_by_odom_then_varify_using_lidar(0.146, back_angle, direction=-1, is_using_lidar_to_check=True)
         except Exception as e:
             print(e)
         finally:
@@ -495,10 +511,6 @@ def main(args=None):
     auto_nav = AutoNav()
     #auto_nav.test()
     auto_nav.procedure_loop()
-
-    # create matplotlib figure
-    # plt.ion()
-    # plt.show()
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically

@@ -159,6 +159,7 @@ class AutoNav(Node):
 
         #drink can logic
         self.is_drink_present = False
+        self.is_docking_incomplete = True
         
     def check_drink(self, exit_condition):
         while(1):
@@ -207,7 +208,10 @@ class AutoNav(Node):
     def push_button_callback(self, msg):
         self.is_drink_present = msg.data
     def nfc_callback(self, msg):
-        self.docking_phase_two()
+        if(self.is_docking_incomplete):
+            self.docking_phase_two()
+        else:
+            return
     
     def rotatebot(self, rot_angle):
         if(rot_angle == 0):
@@ -264,17 +268,19 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
-    def rotatebot_with_one_time_distance_checking(self, rot_angle, checking_distance, checking_index):
+    def rotatebot_with_one_direction_distance_checking(self, rot_angle, checking_distance, checking_index):
         #checking the distance at checking_index inside lidar data against the checking_distance.
-        angle = rot_angle*0.95
+        #
+        angle = rot_angle
         remaining_angle = rot_angle-angle
         while(1):
             if(angle < 0.5):
                 break
-            self.rotatebot(angle)
-            if(self.laser_range[checking_index] < checking_distance):
+            if(self.laser_range[checking_index] != checking_distance):
                 angle = remaining_angle * 0.95
                 remaining_angle = rot_angle - angle
+            self.rotatebot(angle)
+            
 
     def pick_direction(self):
         # self.get_logger().info('In pick_direction')
@@ -445,20 +451,23 @@ class AutoNav(Node):
             #returning to the dispenser
             vars = reverse_op[self.table_number-1]
             i = 0
-            while rclpy.ok():
-                self.move_distance_by_odom_then_varify_using_lidar
-                rclpy.spin_once(self)
+            self.move_distance_by_odom_then_varify_using_lidar(0.146, back_angle, direction=-1, is_using_lidar_to_check=True)
         except Exception as e:
             print(e)
         finally:
             self.stopbot()
 
     def docking_phase_two(self):
+        ##for debugging purpose
+        print("in docking phase two, return with nothing being done.")
+        return
+        ##
         try:
             #returning to the dispenser
             #measured distance: 14.6cm
 
             self.move_distance_by_odom_then_varify_using_lidar(0.146, back_angle, direction=-1, is_using_lidar_to_check=True)
+            self.is_docking_incomplete = False
         except Exception as e:
             print(e)
         finally:

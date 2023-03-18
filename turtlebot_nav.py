@@ -23,6 +23,7 @@ import numpy as np
 import math
 import cmath
 import time
+from std_msgs.msg import Bool
 
 # constants
 rotatechange = 0.1
@@ -55,7 +56,6 @@ forward_op = [
     [(1.25, -90), (0.40, -90), (0.40, 90), (0.40, 90), (0.30, 0)],
     [(0.30, -90), (0.40, 90)],
 ]
-
 
 reverse_op = [
     [(0.2, 0)],
@@ -111,7 +111,8 @@ class AutoNav(Node):
         self.pitch = 0
         self.yaw = 0
         self.x = 0
-        
+        self.y = 0
+
         # create subscription to track occupancy
         self.occ_subscription = self.create_subscription(
             OccupancyGrid,
@@ -314,12 +315,14 @@ class AutoNav(Node):
     def move_distance_by_odom_then_varify_using_lidar(self, target_distance, lidar_checking_index, direction=1, is_using_lidar_to_check=False, distance_tolerance=0.05):
         #move forward if direction is one, speed is determined by choose_speed
         initial_x = self.x
+        initial_y = self.y
         try:
             while rclpy.ok():
                 if self.laser_range.size != 0:
                     final_x = self.x
-                    moved_distance = final_x - initial_x
-                    print(f"moved_distance: {moved_distance} = {final_x} - {initial_x}")
+                    final_y = self.y
+                    moved_distance = math.sqrt((final_x - initial_x)**2 + (final_y - initial_y)**2)
+                    print(f"moved_distance: {moved_distance}\ndifference in x: {final_x} - {initial_x}\ndifference in y: {final_y} - {initial_y}\n")
                     
                     remaining_distance = target_distance - moved_distance
                     self.choose_speed(remaining_distance)

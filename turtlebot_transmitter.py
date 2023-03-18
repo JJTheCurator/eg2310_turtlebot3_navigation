@@ -17,33 +17,34 @@ import RPi.GPIO as GPIO
 import time
 from rclpy.node import Node
 
-from std_msgs.msg import String
+from std_msgs.msg import Bool
+DRINK_PRESENT = 1
+DRINK_NOT_PRESENT = 0
 
 
 class TurtleBotTransmitter(Node):
 
     def __init__(self):
         super().__init__('turtleBot_transmitter')
-        self.push_button_publisher = self.create_publisher(bool, 'push_button', 10)
-        self.nfc_publisher = self.create_publisher(bool, 'nfc', 10)
-        #timer_period = 0.5  # seconds
-        #self.timer = self.create_timer(timer_period, self.timer_callback)
-        #self.i = 0
+        self.push_button_publisher = self.create_publisher(Bool, 'push_button', 10)
+        self.nfc_publisher = self.create_publisher(Bool, 'nfc', 10)
+        timer_period = 0.05  # seconds
+        self.timer = self.create_timer(timer_period, self.timer_callback)
 
     def check_loop(self):
         while(1):
-            push_button_msg = bool()
+            push_button_msg = Bool()
             self.push_button_publisher.publish(self.check_push_button())
-            nfc_reader_msg = bool()
+            nfc_reader_msg = Bool()
             self.nfc_publisher.publish(self.check_nfc_reader())
             time.sleep(0.1)
 
 
     def check_push_button(self):
         if(GPIO.readpin(1)):
-            return True
+            return DRINK_PRESENT
         else:
-            return False
+            return DRINK_NOT_PRESENT
 
     def check_nfc_reader(self):
         if(1):
@@ -51,25 +52,29 @@ class TurtleBotTransmitter(Node):
         else:
             return False
 
-    # def timer_callback(self):
-    #     msg = String()
-    #     msg.data = 'Hello World: %d' % self.i
-    #     self.publisher_.publish(msg)
-    #     self.get_logger().info('Publishing: "%s"' % msg.data)
-    #     self.i += 1
+    def timer_callback(self):
+        push_button_msg = Bool()
+        nfc_msg = Bool()
+
+        push_button_msg.data = self.check_push_button()
+        nfc_msg.data = self.check_nfc_reader()
+
+        self.push_button_publisher.publish(push_button_msg)
+        self.nfc_publisher.publish(nfc_msg)
 
 
 def main(args=None):
     rclpy.init(args=args)
 
-    minimal_publisher = MinimalPublisher()
+    TurtleBotTransmitter = TurtleBotTransmitter()
 
-    rclpy.spin(minimal_publisher)
+    rclpy.spin(TurtleBotTransmitter)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    minimal_publisher.destroy_node()
+    TurtleBotTransmitter.destroy_node()
+    GPIO.cleanup()
     rclpy.shutdown()
 
 

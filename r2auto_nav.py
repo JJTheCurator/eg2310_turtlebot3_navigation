@@ -133,21 +133,21 @@ class AutoNav(Node):
         self.laser_range = np.array([])
         self.one_meter_counter = 0
 
-        # self.push_button_subscription = self.create_subscription(
-        #     String,
-        #     'push_button',
-        #     self.push_button_callback,
-        #     10,
-        # )
-        # self.push_button_subscription
+        self.push_button_subscription = self.create_subscription(
+            String,
+            'push_button',
+            self.push_button_callback,
+            10,
+        )
+        self.push_button_subscription
 
-        # self.nfc_subscription = self.create_subscription(
-        #     String,
-        #     "nfc",
-        #     self.nfc_callback,
-        #     10,
-        # )
-        # self.nfc_subscription
+        self.nfc_subscription = self.create_subscription(
+            String,
+            "nfc",
+            self.nfc_callback,
+            10,
+        )
+        self.nfc_subscription
 
         print("__init__ end")
 
@@ -291,7 +291,7 @@ class AutoNav(Node):
         # -0.05
         # not sure if this is really necessary, but things seem to work more
         # reliably with this
-        time.sleep(0.3)
+        #time.sleep(0.1)
         self.publisher_.publish(twist)
 
     def move_distance_by_odom_then_varify_using_lidar(self, target_distance, lidar_checking_index, direction=1, is_using_lidar_to_check=False, distance_tolerance=0.05):
@@ -500,8 +500,8 @@ def main(args=None):
 
     auto_nav = AutoNav()
     #auto_nav.test()
-    auto_nav.procedure_loop()
-    #auto_nav.movebot()
+    #auto_nav.procedure_loop()
+    auto_nav.movebot()
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)

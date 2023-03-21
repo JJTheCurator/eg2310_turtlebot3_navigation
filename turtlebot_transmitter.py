@@ -21,6 +21,13 @@ from std_msgs.msg import Bool
 DRINK_PRESENT = 1
 DRINK_NOT_PRESENT = 0
 
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup(10, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+
+from mfrc522 import SimpleMFRC522
+reader = SimpleMFRC522()
+
+
 
 class TurtleBotTransmitter(Node):
 
@@ -41,13 +48,16 @@ class TurtleBotTransmitter(Node):
 
 
     def check_push_button(self):
-        if(GPIO.readpin(1)):
+        if(GPIO.input(10) == GPIO.HIGH):
             return DRINK_PRESENT
         else:
             return DRINK_NOT_PRESENT
 
     def check_nfc_reader(self):
-        if(1):
+        id, text = reader.read()
+        print("ID: %s\nText: %s" % (id,text))
+
+        if(id != ""):
             return True
         else:
             return False
@@ -66,14 +76,14 @@ class TurtleBotTransmitter(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    TurtleBotTransmitter = TurtleBotTransmitter()
+    turtleBotTransmitter = TurtleBotTransmitter()
 
-    rclpy.spin(TurtleBotTransmitter)
+    rclpy.spin(turtleBotTransmitter)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    TurtleBotTransmitter.destroy_node()
+    turtleBotTransmitter.destroy_node()
     GPIO.cleanup()
     rclpy.shutdown()
 

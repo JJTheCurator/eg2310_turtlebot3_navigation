@@ -52,9 +52,9 @@ mapfile = 'map.txt'
 forward_op = [
     [(0.30, 0)],
     [(0.30, -90), (1.120, 0)],
-    [(1.25, -90), (1.120, 0)],
-    [(1.25, -90), (0.40, 0)],
-    [(1.25, -90), (0.40, -90), (0.40, 90), (0.40, 90), (0.30, 0)],
+    [(1.35, -90), (1.120, 0)],
+    [(1.35, -90), (0.40, 0)],
+    [(1.35, -90), (0.40, -90), (0.40, 90), (0.40, 90), (0.30, 0)],
     [(0.30, -90), (0.40, 90)],
 ]
 
@@ -96,7 +96,7 @@ class AutoNav(Node):
         super().__init__('auto_nav')
         
         # create publisher for moving TurtleBot
-        self.publisher_ = self.create_publisher(Twist,'cmd_vel',10)
+        self.publisher_ = self.create_publisher(Twist,'cmd_vel',20)
         # self.get_logger().info('Created publisher')
         
         # create subscription to track orientation
@@ -108,11 +108,11 @@ class AutoNav(Node):
         # self.get_logger().info('Created subscriber')
         self.odom_subscription  # prevent unused variable warning
         # initialize variables
-        self.roll = 0
-        self.pitch = 0
-        self.yaw = 0
-        self.x = 0
-        self.y = 0
+        self.roll = 0.0
+        self.pitch = 0.0
+        self.yaw = 0.0
+        self.x = 0.0
+        self.y = 0.0
 
         # create subscription to track occupancy
         self.occ_subscription = self.create_subscription(
@@ -175,6 +175,7 @@ class AutoNav(Node):
         orientation_quat =  msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
         self.x = msg.pose.pose.position.x
+        self.y = msg.pose.pose.position.y
 
     def occ_callback(self, msg):
         # self.get_logger().info('In occ_callback')
@@ -282,8 +283,8 @@ class AutoNav(Node):
                 remaining_angle = rot_angle - angle
 
     def movebot(self, speed=speedchange, direction=1):
-        # self.get_logger().info('In movebot')
-        # start moving
+        if(speed == self.speed):
+            return
         print(f"in movebot, speed = {speed}, direction = {direction}")
         twist = Twist()
         twist.linear.x = speed * direction
@@ -291,7 +292,7 @@ class AutoNav(Node):
         # -0.05
         # not sure if this is really necessary, but things seem to work more
         # reliably with this
-        #time.sleep(0.1)
+        time.sleep(0.1)
         self.publisher_.publish(twist)
 
     def move_distance_by_odom_then_varify_using_lidar(self, target_distance, lidar_checking_index, direction=1, is_using_lidar_to_check=False, distance_tolerance=0.05):
@@ -308,13 +309,13 @@ class AutoNav(Node):
                     print(f"moved_distance: {moved_distance}\ndifference in x: {final_x} - {initial_x}\ndifference in y: {final_y} - {initial_y}\n")
                     
                     remaining_distance = target_distance - moved_distance
-                    self.choose_speed(remaining_distance)
+                    speed = self.choose_speed(remaining_distance)
                     # if the list is not empty
                     if(remaining_distance < 0 or self.laser_range[lidar_checking_index] <= 0.2):
                         self.stopbot()
                         break
                     else:
-                        self.movebot(speed=self.speed, direction=direction)
+                        self.movebot(speed=speed, direction=direction)
                 rclpy.spin_once(self)
 
             if(is_using_lidar_to_check == False):
@@ -325,13 +326,13 @@ class AutoNav(Node):
                     current = self.laser_range[lidar_checking_index] 
                     distance = current - target_distance
                     print(f"distance: {distance} = {current} - {target_distance}")
-                    self.choose_speed(distance)
+                    speed = self.choose_speed(distance)
                     # if the list is not empty
                     if(abs(distance) < distance_tolerance):
                         self.stopbot()
                         return
                     else:
-                        self.movebot(speed=self.speed, direction=distance/abs(distance))
+                        self.movebot(speed=speed, direction=distance/abs(distance))
                 rclpy.spin_once(self)
             
         except Exception as e:
@@ -350,13 +351,15 @@ class AutoNav(Node):
 
     def choose_speed(self, distance):
         if(distance <= 0.3):
-            self.speed = 0.03
+            speed = 0.03
         elif(distance <= 0.6):
-            self.speed = 0.2
+            speed = 0.4
         elif(distance <= 1.0):
-            self.speed = 0.5        
+            speed = 0.6        
         else:
-            self.speed = 0.8
+            speed = 0.8
+
+        return speed
 
     def deliver_phase_two(self):
         #additional procedure for table 6
@@ -379,7 +382,7 @@ class AutoNav(Node):
                         direction = -1
                     if(front_distance >= 0.94):
                         direction = 1
-                    speed = 0.3
+                    speed = 0.1
                     self.movebot(speed,direction)
                 rclpy.spin_once(self)
            
@@ -404,7 +407,7 @@ class AutoNav(Node):
                     distance = current - target
                     print(f"distance: {distance} = {current} - {target}")
                     
-                    self.choose_speed(distance)
+                    speed = self.choose_speed(distance)
                     # if the list is not empty
                     if(distance < 0):
                         self.stopbot()
@@ -412,7 +415,7 @@ class AutoNav(Node):
                             self.rotatebot(vars[i][1]+ROTATE_BIAS_DEGREE)
                         i += 1
                     else:
-                        self.movebot(speed=self.speed)
+                        self.movebot(speed=speed)
                 rclpy.spin_once(self)
             #special case for table 6
             if(self.table_number == 6):
@@ -500,8 +503,8 @@ def main(args=None):
 
     auto_nav = AutoNav()
     #auto_nav.test()
-    #auto_nav.procedure_loop()
-    auto_nav.movebot()
+    auto_nav.procedure_loop()
+    #auto_nav.movebot()
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)

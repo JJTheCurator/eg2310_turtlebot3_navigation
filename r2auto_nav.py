@@ -133,21 +133,21 @@ class AutoNav(Node):
         self.laser_range = np.array([])
         self.one_meter_counter = 0
 
-        # self.push_button_subscription = self.create_subscription(
-        #     String,
-        #     'push_button',
-        #     self.push_button_callback,
-        #     10,
-        # )
-        # self.push_button_subscription
+        self.push_button_subscription = self.create_subscription(
+            String,
+            'push_button',
+            self.push_button_callback,
+            10,
+        )
+        self.push_button_subscription
 
-        # self.nfc_subscription = self.create_subscription(
-        #     String,
-        #     "nfc",
-        #     self.nfc_callback,
-        #     10,
-        # )
-        # self.nfc_subscription
+        self.nfc_subscription = self.create_subscription(
+            String,
+            "nfc",
+            self.nfc_callback,
+            10,
+        )
+        self.nfc_subscription
 
         print("__init__ end")
 
@@ -160,12 +160,7 @@ class AutoNav(Node):
 
         #drink can logic
         self.is_drink_present = False
-<<<<<<< HEAD
-        self.is_docking_incomplete = True
-        
-=======
 
->>>>>>> 56c93c2f2bd851a1fdbe60c8100d922529949c65
     def check_drink(self, exit_condition):
         while(1):
             if(self.is_drink_present != exit_condition):
@@ -217,10 +212,7 @@ class AutoNav(Node):
         else:
             self.is_drink_present = 0
     def nfc_callback(self, msg):
-        if(self.is_docking_incomplete):
-            self.docking_phase_two()
-        else:
-            return
+        self.docking_phase_two()
     
     def rotatebot(self, rot_angle):
         if(rot_angle == 0):
@@ -277,19 +269,17 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
-    def rotatebot_with_one_direction_distance_checking(self, rot_angle, checking_distance, checking_index):
+    def rotatebot_with_one_time_distance_checking(self, rot_angle, checking_distance, checking_index):
         #checking the distance at checking_index inside lidar data against the checking_distance.
-        #
-        angle = rot_angle
+        angle = rot_angle*0.95
         remaining_angle = rot_angle-angle
         while(1):
             if(angle < 0.5):
                 break
-            if(self.laser_range[checking_index] != checking_distance):
+            self.rotatebot(angle)
+            if(self.laser_range[checking_index] < checking_distance):
                 angle = remaining_angle * 0.95
                 remaining_angle = rot_angle - angle
-            self.rotatebot(angle)
-            
 
     def movebot(self, speed=speedchange, direction=1):
         # self.get_logger().info('In movebot')
@@ -301,7 +291,7 @@ class AutoNav(Node):
         # -0.05
         # not sure if this is really necessary, but things seem to work more
         # reliably with this
-        time.sleep(0.3)
+        #time.sleep(0.1)
         self.publisher_.publish(twist)
 
     def move_distance_by_odom_then_varify_using_lidar(self, target_distance, lidar_checking_index, direction=1, is_using_lidar_to_check=False, distance_tolerance=0.05):
@@ -437,23 +427,20 @@ class AutoNav(Node):
             #returning to the dispenser
             vars = reverse_op[self.table_number-1]
             i = 0
-            self.move_distance_by_odom_then_varify_using_lidar(0.146, back_angle, direction=-1, is_using_lidar_to_check=True)
+            while rclpy.ok():
+                self.move_distance_by_odom_then_varify_using_lidar
+                rclpy.spin_once(self)
         except Exception as e:
             print(e)
         finally:
             self.stopbot()
 
     def docking_phase_two(self):
-        ##for debugging purpose
-        print("in docking phase two, return with nothing being done.")
-        return
-        ##
         try:
             #returning to the dispenser
             #measured distance: 14.6cm
 
             self.move_distance_by_odom_then_varify_using_lidar(0.146, back_angle, direction=-1, is_using_lidar_to_check=True)
-            self.is_docking_incomplete = False
         except Exception as e:
             print(e)
         finally:
@@ -513,8 +500,8 @@ def main(args=None):
 
     auto_nav = AutoNav()
     #auto_nav.test()
-    auto_nav.procedure_loop()
-    #auto_nav.movebot()
+    #auto_nav.procedure_loop()
+    auto_nav.movebot()
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)

@@ -96,7 +96,7 @@ class AutoNav(Node):
         super().__init__('auto_nav')
         
         # create publisher for moving TurtleBot
-        self.publisher_ = self.create_publisher(Twist,'cmd_vel',20)
+        self.publisher_ = self.create_publisher(Twist,'cmd_vel',5)
         # self.get_logger().info('Created publisher')
         
         # create subscription to track orientation
@@ -111,8 +111,6 @@ class AutoNav(Node):
         self.roll = 0.0
         self.pitch = 0.0
         self.yaw = 0.0
-        self.x = 0.0
-        self.y = 0.0
 
         # create subscription to track occupancy
         self.occ_subscription = self.create_subscription(
@@ -157,6 +155,13 @@ class AutoNav(Node):
 
         #navigation logic
         self.speed = 0.0
+        self.first_run = True
+        self.total_distance = 0.
+        self.x = 0.0
+        self.y = 0.0
+        self.previous_x = 0.0
+        self.previous_y = 0.0
+        self.linear_distance = 0.0
 
         #drink can logic
         self.is_drink_present = False
@@ -174,8 +179,22 @@ class AutoNav(Node):
         # self.get_logger().info('In odom_callback')
         orientation_quat =  msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
-        self.x = msg.pose.pose.position.x
-        self.y = msg.pose.pose.position.y
+        if(self.first_run):
+            self.previous_x = msg.pose.pose.position.x
+            self.previous_y = msg.pose.pose.position.y
+            self.first_run = False
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        d_increment = math.sqrt((x - self.previous_x) ** 2 +
+                   (y - self.previous_y) ** 2)
+
+        self.linear_distance += d_increment
+        self.previous_x = msg.pose.pose.position.x
+        self.previous_y = msg.pose.pose.position.y
+
+        print(f"self.previous_x = {self.previous_x}")
+        print(f"self.previous_y = {self.previous_y}")
+        print(f"self.linear_distance = {self.linear_distance}")
 
     def occ_callback(self, msg):
         # self.get_logger().info('In occ_callback')
@@ -283,32 +302,29 @@ class AutoNav(Node):
                 remaining_angle = rot_angle - angle
 
     def movebot(self, speed=speedchange, direction=1):
-        if(speed == self.speed):
+        print(f"in movebot, speed = {speed}, self.speed = {speed}, direction = {direction}")
+        if(speed == self.speed or speed == 0):
+            print("speed == self.speed returning")
             return
-        print(f"in movebot, speed = {speed}, direction = {direction}")
         twist = Twist()
         twist.linear.x = speed * direction
         twist.angular.z = 0.0
-        # -0.05
-        # not sure if this is really necessary, but things seem to work more
-        # reliably with this
-        time.sleep(0.1)
+        #time.sleep(1)
         self.publisher_.publish(twist)
+        #self.speed = speed
 
-    def move_distance_by_odom_then_varify_using_lidar(self, target_distance, lidar_checking_index, direction=1, is_using_lidar_to_check=False, distance_tolerance=0.05):
+    def move_distance_by_odom_then_varify_using_lidar(self, target_distance, lidar_checking_index=0, direction=1, is_using_lidar_to_check=False, distance_tolerance=0.05):
         #move forward if direction is one, speed is determined by choose_speed
         print("inside move_distance by odom")
-        initial_x = self.x
-        initial_y = self.y
+        
+        initial_distance = self.linear_distance
         try:
             while rclpy.ok():
                 if self.laser_range.size != 0:
-                    final_x = self.x
-                    final_y = self.y
-                    moved_distance = math.sqrt((final_x - initial_x)**2 + (final_y - initial_y)**2)
-                    print(f"moved_distance: {moved_distance}\ndifference in x: {final_x} - {initial_x}\ndifference in y: {final_y} - {initial_y}\n")
                     
-                    remaining_distance = target_distance - moved_distance
+                    final_distance = self.linear_distance
+                    remaining_distance = target_distance - final_distance + initial_distance
+                    print(f"remaining_distance: {remaining_distance} = {target_distance} - {final_distance} + {initial_distance}")
                     speed = self.choose_speed(remaining_distance)
                     # if the list is not empty
                     if(remaining_distance < 0 or self.laser_range[lidar_checking_index] <= 0.2):
@@ -395,6 +411,7 @@ class AutoNav(Node):
             self.stopbot()
 
     def deliver(self):
+        print("inside deliver")
         try:
             vars = forward_op[self.table_number-1]
             i = 0
@@ -431,7 +448,7 @@ class AutoNav(Node):
             vars = reverse_op[self.table_number-1]
             i = 0
             while rclpy.ok():
-                self.move_distance_by_odom_then_varify_using_lidar
+                self.move_distance_by_odom_then_varify_using_lidar(0.146)
                 rclpy.spin_once(self)
         except Exception as e:
             print(e)
@@ -495,22 +512,23 @@ class AutoNav(Node):
         else:
             return False
     def test(self):
-        self.move_distance_by_odom_then_varify_using_lidar(0.3, 0, 0.3)
-
+        while(1):
+            self.movebot(0.1)
+            time.sleep(0.5)
 def main(args=None):
 
     rclpy.init(args=args)
 
     auto_nav = AutoNav()
     #auto_nav.test()
-    auto_nav.procedure_loop()
+    #auto_nav.procedure_loop()
     #auto_nav.movebot()
+    auto_nav.move_distance_by_odom_then_varify_using_lidar(0.30, 0)
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
     auto_nav.destroy_node()
     rclpy.shutdown()
-    #GPIO.cleanup()
 
 if __name__ == '__main__':
     main()

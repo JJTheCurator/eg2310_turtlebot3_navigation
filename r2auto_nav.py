@@ -133,7 +133,7 @@ class AutoNav(Node):
 
         self.push_button_subscription = self.create_subscription(
             String,
-            'push_button',
+            'topic',
             self.push_button_callback,
             10,
         )
@@ -167,9 +167,12 @@ class AutoNav(Node):
         self.is_drink_present = False
 
     def check_drink(self, exit_condition):
-        while(1):
-            if(self.is_drink_present != exit_condition):
-                time.sleep(0.05)
+        print("in check_drink")
+        while rclpy.ok():
+            rclpy.spin_once(self) 
+            if(self.is_drink_present == exit_condition):
+                break
+            time.sleep(0.3)
         if(exit_condition == DRINK_NOT_PRESENT):
             print("Drink is not present, proceeding.")
         else:
@@ -223,14 +226,14 @@ class AutoNav(Node):
         #np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
         self.laser_range[self.laser_range==0] = np.nan
-        #print(self.laser_range)
+        print(self.laser_range)
 
     def push_button_callback(self, msg):
-        print(msg.data)
-        if(msg.data == "true"):
-            self.is_drink_present = 1
+        self.get_logger().info('I heard: "%s"' % msg.data)
+        if(msg.data == "True"):
+            self.is_drink_present = DRINK_PRESENT
         else:
-            self.is_drink_present = 0
+            self.is_drink_present = DRINK_NOT_PRESENT
     def nfc_callback(self, msg):
         self.docking_phase_two()
     
@@ -490,11 +493,11 @@ class AutoNav(Node):
         try:
             while(1):
                 self.UI()
+                #self.check_can()
+                self.check_drink(exit_condition=DRINK_PRESENT)
+                #self.deliver()
                 self.check_can()
-                #self.check_drink(exit_condition=DRINK_PRESENT)
-                self.deliver()
-                self.check_can()
-                #self.check_drink(exit_condition=DRINK_NOT_PRESENT)
+                self.check_drink(exit_condition=DRINK_NOT_PRESENT)
                 self.docking_phase_one()
         except Exception as e:
             print(e)
@@ -521,12 +524,13 @@ def main(args=None):
 
     auto_nav = AutoNav()
     #auto_nav.test()
-    #auto_nav.procedure_loop()
+    auto_nav.procedure_loop()
     #auto_nav.movebot()
-    auto_nav.move_distance_by_odom_then_varify_using_lidar(0.30, 0)
+    #auto_nav.move_distance_by_odom_then_varify_using_lidar(0.30, 0)
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
+    #rclpy.spin(auto_nav)
     auto_nav.destroy_node()
     rclpy.shutdown()
 

@@ -369,14 +369,16 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def choose_speed(self, distance):
-        if(distance <= 0.3):
+        if(distance <= 0.1):
             speed = 0.03
+        elif(distance <= 0.3):
+            speed = 0.2
         elif(distance <= 0.6):
-            speed = 0.4
+            speed = 0.6
         elif(distance <= 1.0):
-            speed = 0.6        
+            speed = 0.8        
         else:
-            speed = 0.8
+            speed = 1.0
 
         return speed
 

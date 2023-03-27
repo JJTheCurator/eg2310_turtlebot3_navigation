@@ -12,78 +12,100 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import rclpy
-import RPi.GPIO as GPIO
 import time
+import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import Bool
-DRINK_PRESENT = 1
-DRINK_NOT_PRESENT = 0
+from std_msgs.msg import String
+import RPi.GPIO as GPIO
+
+from hx711 import HX711
+hx = HX711(16, 12)
+
+hx.set_reading_format("MSB", "MSB")
+
+# HOW TO CALCULATE THE REFFERENCE UNIT
+# To set the reference unit to 1. Put 1kg on your sensor or anything you have and know exactly how much it weights.
+# In this case, 92 is 1 gram because, with 1 as a reference unit I got numbers near 0 without any weight
+# and I got numbers around 184000 when I added 2kg. So, according to the rule of thirds:
+# If 2000 grams is 184000 then 1000 grams is 184000 / 2000 = 92.
+#hx.set_reference_unit(113)
+#hx.set_reference_unit(referenceUnit)
+
+hx.reset()
+hx.tare()
 
 GPIO.setmode(GPIO.BOARD)
 GPIO.setup(10, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
-from mfrc522 import SimpleMFRC522
-reader = SimpleMFRC522()
+GPIO_TRIG = 12
+GPIO_ECHO = 16
+GPIO.setup(GPIO_TRIG, GPIO.OUT)
+GPIO.setup(GPIO_ECHO, GPIO.IN)
 
-
-
-class TurtleBotTransmitter(Node):
+class Publisher(Node):
 
     def __init__(self):
-        super().__init__('turtleBot_transmitter')
-        self.push_button_publisher = self.create_publisher(Bool, 'push_button', 10)
-        self.nfc_publisher = self.create_publisher(Bool, 'nfc', 10)
-        timer_period = 0.05  # seconds
+        super().__init__('publisher')
+        self.publisher_ = self.create_publisher(String, 'topic', 10)
+        timer_period = 0.5  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
-    def check_loop(self):
-        while(1):
-            push_button_msg = Bool()
-            self.push_button_publisher.publish(self.check_push_button())
-            nfc_reader_msg = Bool()
-            self.nfc_publisher.publish(self.check_nfc_reader())
-            time.sleep(0.1)
-
+    def timer_callback(self):
+        msg = String()
+        msg.data = self.check_push_button() 
+        self.publisher_.publish(msg)
+        self.get_logger().info('Publishing: "%s"' % msg.data)
+        self.check_ultrasonic()
 
     def check_push_button(self):
+        print(GPIO.input(10))
         if(GPIO.input(10) == GPIO.HIGH):
-            return DRINK_PRESENT
+            return "True"
         else:
-            return DRINK_NOT_PRESENT
+            return "False"
+    
+    def check_ultrasonic(self):
+        GPIO.output(GPIO_TRIG, True)
+        time.sleep(0.00001)
+        GPIO.output(GPIO_TRIG, False)
 
-    def check_nfc_reader(self):
-        id, text = reader.read()
-        print("ID: %s\nText: %s" % (id,text))
+        start_time = time.time()
+        stop_time = time.time()
 
-        if(id != ""):
-            return True
-        else:
-            return False
+        while(GPIO.input(GPIO_ECHO) == 0):
+            start_time = time.time()
 
-    def timer_callback(self):
-        push_button_msg = Bool()
-        nfc_msg = Bool()
+        while(GPIO.input(GPIO_ECHO) == 1):
+            stop_time = time.time()
+        
+        time_elapsed = stop_time - start_time
+        distance = (time_elapsed * 34300) / 2
 
-        push_button_msg.data = self.check_push_button()
-        nfc_msg.data = self.check_nfc_reader()
+        print(distance)
+        return distance
 
-        self.push_button_publisher.publish(push_button_msg)
-        self.nfc_publisher.publish(nfc_msg)
+    def check_weight_sensor(self):
+
+        weight = hx.get_weight(5)
+
+        print(weight)
+        hx.power_down()
+        hx.power_up()
+        return weight
 
 
 def main(args=None):
     rclpy.init(args=args)
 
-    turtleBotTransmitter = TurtleBotTransmitter()
+    publisher = Publisher()
 
-    rclpy.spin(turtleBotTransmitter)
+    rclpy.spin(publisher)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    turtleBotTransmitter.destroy_node()
+    publisher.destroy_node()
     GPIO.cleanup()
     rclpy.shutdown()
 

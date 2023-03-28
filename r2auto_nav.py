@@ -42,7 +42,7 @@ left_angle = 79
 back_angle = 179
 back_angles = range(back_angle - 10,back_angle + 10,1)
 
-ROTATE_BIAS_DEGREE = 4.0
+ROTATE_BIAS_DEGREE = 0
 DRINK_PRESENT = True
 DRINK_NOT_PRESENT = False
 DEBUG = False
@@ -51,22 +51,32 @@ DEBUG = False
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
 
+# forward_op = [
+#     [(0.30, 0)],
+#     [(0.30, -90), (1.120, 0)],
+#     [(1.35, -90), (1.120, 0)],
+#     [(1.35, -90), (0.40, 0)],
+#     [(1.35, -90), (0.40, -90), (0.40, 90), (0.40, 90), (0.30, 0)],
+#     [(0.30, -90), (0.40, 90)],
+# ]
+
+# (travelling distance, lidar checking distance, turning angle)
 forward_op = [
-    [(0.30, 0)],
-    [(0.30, -90), (1.120, 0)],
-    [(1.35, -90), (1.120, 0)],
-    [(1.35, -90), (0.40, 0)],
-    [(1.35, -90), (0.40, -90), (0.40, 90), (0.40, 90), (0.30, 0)],
-    [(0.30, -90), (0.40, 90)],
+    [(1.55, 0.30, 0)],
+    [(1.55, 0.30, -90), (0.8, 1.120, 0)],
+    [(0.5, 1.35, -90), (0.8, 1.120, 0)],
+    [(0.5, 1.35, -90), (1.60, 0.40, 0)],
+    [(0.1, 1.55, -90), (2.440, 90), (1.88, 0.4, 0)],
+    [(1.55, 0.30, -90), (1.60, 0.40, 90)],
 ]
 
 reverse_op = [
-    [(0.2, 0)],
-    [(0.5, 90), (0.2, 0)],
-    [(0.5, 90), (0.2, 0)],
-    [(0.5, 90), (0.2, 0)],
-    [(0.4, 90), (0.8, 90), (0.4, 90), (0.5, 90), (0.2, 90)],
-    [(0.4, 90), (0.4, 90), (0.5, 90), (0.2, 90)],
+    [(1.55, 0.2, 0)],
+    [(0.8, 0.5, 90), (1.55, 0.2, 0)],
+    [(0.8, 0.5, 90), (0.5, 0.2, 0)],
+    [(1.6, 0.5, 90), (0.5, 0.2, 0)],
+    [(1.88, 0.4, 90), (2.440, 0.5, 90), (0.5, 0.4, 90)],
+    [(1.6, 0.4, 90), (1.4, 0.4, 90), (0.8, 0.5, 90), (0.2, 90)],
 ]
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
@@ -203,6 +213,7 @@ class AutoNav(Node):
         orientation_quat =  msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
         if(self.first_run):
+            self.linear_distance = 0
             self.previous_x = msg.pose.pose.position.x
             self.previous_y = msg.pose.pose.position.y
             self.first_run = False
@@ -215,8 +226,8 @@ class AutoNav(Node):
         self.previous_x = msg.pose.pose.position.x
         self.previous_y = msg.pose.pose.position.y
 
-        print(f"self.previous_x = {self.previous_x}")
-        print(f"self.previous_y = {self.previous_y}")
+        #print(f"self.previous_x = {self.previous_x}")
+        #print(f"self.previous_y = {self.previous_y}")
         print(f"self.linear_distance = {self.linear_distance}")
 
     def occ_callback(self, msg):
@@ -257,8 +268,8 @@ class AutoNav(Node):
             self.is_drink_present = DRINK_NOT_PRESENT
     def ultrasonic_sensor_callback(self, msg):
         print(f"ultrasonic sensor: {msg.data}")
-        print("ultrasonic sensor data ignored")
-        return
+        #print("ultrasonic sensor data ignored")
+        
         if(msg.data <= 3):
             self.is_drink_present = DRINK_PRESENT
         else:
@@ -277,6 +288,7 @@ class AutoNav(Node):
     def rotatebot(self, rot_angle):
         if(rot_angle == 0):
             return
+        
         # self.get_logger().info('In rotatebot')
 
         # create Twist object
@@ -353,13 +365,14 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
         #self.speed = speed
 
-    def move_distance_by_odom_then_varify_using_lidar(self, target_distance, lidar_checking_index=0, direction=1, is_using_lidar_to_check=False, distance_tolerance=0.05):
+    def move_distance_by_odom_then_varify_using_lidar(self, target_distance, lidar_checking_index=0, lidar_checking_distance=0.3, direction=1, is_using_lidar_to_check=False, distance_tolerance=0.05):
         #move forward if direction is one, speed is determined by choose_speed
         print("inside move_distance by odom")
         
         initial_distance = self.linear_distance
         try:
             while rclpy.ok():
+                rclpy.spin_once(self)
                 if self.laser_range.size != 0:
                     
                     final_distance = self.linear_distance
@@ -372,7 +385,7 @@ class AutoNav(Node):
                         break
                     else:
                         self.movebot(speed=speed, direction=direction)
-                rclpy.spin_once(self)
+                
 
             if(is_using_lidar_to_check == False):
                 return
@@ -380,8 +393,8 @@ class AutoNav(Node):
             while rclpy.ok():
                 if self.laser_range.size != 0:
                     current = self.laser_range[lidar_checking_index] 
-                    distance = current - target_distance
-                    print(f"distance: {distance} = {current} - {target_distance}")
+                    distance = current - lidar_checking_distance
+                    print(f"distance: {distance} = {current} - {lidar_checking_distance}")
                     speed = self.choose_speed(distance)
                     # if the list is not empty
                     if(abs(distance) < distance_tolerance):
@@ -415,7 +428,7 @@ class AutoNav(Node):
         elif(distance <= 1.0):
             speed = 0.18
         else:
-            speed = 0.22
+            speed = 0.20
 
         return speed
 
@@ -460,21 +473,13 @@ class AutoNav(Node):
             while rclpy.ok():
                 if(i >= len(vars)):
                     break
-                if self.laser_range.size != 0:
-                    current = self.laser_range[front_angle] 
-                    target = vars[i][0]
-                    distance = current - target
-                    print(f"distance: {distance} = {current} - {target}")
-                    
-                    speed = self.choose_speed(distance)
-                    # if the list is not empty
-                    if(distance < 0):
-                        self.stopbot()
-                        if(vars[i][1] != 0):
-                            self.rotatebot(vars[i][1]+ROTATE_BIAS_DEGREE)
-                        i += 1
-                    else:
-                        self.movebot(speed=speed)
+                self.first_run = True
+                if(self.laser_range.size != 0):
+                    self.move_distance_by_odom_then_varify_using_lidar(vars[i][0], 0, vars[i][1], 1, False, 0.05)
+                    if(vars[i][1] != 0):
+                        self.rotatebot(vars[i][2])
+                        self.first_run = True
+                    i += 1
                 rclpy.spin_once(self)
             #special case for table 6
             if(self.table_number == 6):
@@ -490,8 +495,14 @@ class AutoNav(Node):
             vars = reverse_op[self.table_number-1]
             i = 0
             while rclpy.ok():
-                self.move_distance_by_odom_then_varify_using_lidar(0.146)
+                if(i>= len(vars)):
+                    break
                 rclpy.spin_once(self)
+                if(self.laser_range.size != 0):
+                    self.move_distance_by_odom_then_varify_using_lidar(vars[i][0], back_angle, vars[i][1], -1, False, 0.05)
+                    if(vars[i][1] != 0):
+                        self.rotatebot(vars[i][2])
+                    i += 1
         except Exception as e:
             print(e)
         finally:
@@ -526,17 +537,20 @@ class AutoNav(Node):
         except Exception as e:
             print(e)
         finally:
-            self.stopbot()
+            pass
         
     def procedure_loop(self):
+        rclpy.spin_once(self)
         try:
             while(1):
                 self.UI()
-                #self.check_can()
-                self.check_drink(exit_condition=DRINK_PRESENT)
+                self.check_can()
+                #self.check_drink(exit_condition=DRINK_PRESENT)
+                #self.move_distance_by_odom_then_varify_using_lidar(0.1)
+                #self.rotatebot(90)
                 self.deliver()
-                #self.check_can()
-                self.check_drink(exit_condition=DRINK_NOT_PRESENT)
+                self.check_can()
+                #self.check_drink(exit_condition=DRINK_NOT_PRESENT)
                 self.docking_phase_one()
         except Exception as e:
             print(e)
@@ -560,11 +574,14 @@ def main(args=None):
 
     auto_nav = AutoNav()
     #auto_nav.test()
-    #auto_nav.rotatebot(90)
-    #auto_nav.procedure_loop()
+    # while(1):
+    #     auto_nav.rotatebot(-90)
+    #     time.sleep(0.5)
+    #     input("Press Enter to continue")
+    auto_nav.procedure_loop()
     #auto_nav.movebot()
-    auto_nav.move_distance_by_odom_then_varify_using_lidar(0.30, 0)
-    #rclpy.spin(auto_nav)
+    #auto_nav.move_distance_by_odom_then_varify_using_lidar(1.0, 0)
+    rclpy.spin(auto_nav)
     auto_nav.destroy_node()
     rclpy.shutdown()
 

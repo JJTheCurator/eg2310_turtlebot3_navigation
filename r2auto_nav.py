@@ -25,6 +25,8 @@ import cmath
 import time
 from std_msgs.msg import Bool
 from std_msgs.msg import String
+from std_msgs.msg import Int32
+from std_msgs.msg import Float32
 
 # constants
 rotatechange = 0.1
@@ -43,7 +45,7 @@ back_angles = range(back_angle - 10,back_angle + 10,1)
 ROTATE_BIAS_DEGREE = 4.0
 DRINK_PRESENT = True
 DRINK_NOT_PRESENT = False
-
+DEBUG = False
 
 
 scanfile = 'lidar.txt'
@@ -97,6 +99,7 @@ class AutoNav(Node):
         
         # create publisher for moving TurtleBot
         self.publisher_ = self.create_publisher(Twist,'cmd_vel',5)
+        self.check_drink_publisher = self.create_publisher(String, 'check_drink',10)
         # self.get_logger().info('Created publisher')
         
         # create subscription to track orientation
@@ -133,11 +136,27 @@ class AutoNav(Node):
 
         self.push_button_subscription = self.create_subscription(
             String,
-            'topic',
+            'push_button',
             self.push_button_callback,
             10,
         )
         self.push_button_subscription
+
+        self.ultrasonic_sensor_subscription = self.create_subscription(
+            Float32,
+            'ultrasonic_sensor',
+            self.ultrasonic_sensor_callback,
+            10,
+        )
+        self.ultrasonic_sensor_subscription
+
+        self.weight_sensor_subscription = self.create_subscription(
+            Float32,
+            'weight_sensor',
+            self.weight_sensor_callback,
+            10,
+        )
+        self.weight_sensor_subscription
 
         self.nfc_subscription = self.create_subscription(
             String,
@@ -169,6 +188,7 @@ class AutoNav(Node):
     def check_drink(self, exit_condition):
         print("in check_drink")
         while rclpy.ok():
+            self.check_drink_publisher.publish(String())
             rclpy.spin_once(self) 
             if(self.is_drink_present == exit_condition):
                 break
@@ -226,11 +246,28 @@ class AutoNav(Node):
         #np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
         self.laser_range[self.laser_range==0] = np.nan
-        print(self.laser_range)
+        if(DEBUG):
+            print(self.laser_range)
 
     def push_button_callback(self, msg):
-        self.get_logger().info('I heard: "%s"' % msg.data)
+        print(f"push_button: {msg.data}")
         if(msg.data == "True"):
+            self.is_drink_present = DRINK_PRESENT
+        else:
+            self.is_drink_present = DRINK_NOT_PRESENT
+    def ultrasonic_sensor_callback(self, msg):
+        print(f"ultrasonic sensor: {msg.data}")
+        print("ultrasonic sensor data ignored")
+        return
+        if(msg.data <= 3):
+            self.is_drink_present = DRINK_PRESENT
+        else:
+            self.is_drink_present = DRINK_NOT_PRESENT
+    def weight_sensor_callback(self, msg):
+        print(f"weight sensor: {msg.data}")
+        print("weight_sensor data ignored")
+        return
+        if(msg.data >= 100000):
             self.is_drink_present = DRINK_PRESENT
         else:
             self.is_drink_present = DRINK_NOT_PRESENT
@@ -370,15 +407,15 @@ class AutoNav(Node):
 
     def choose_speed(self, distance):
         if(distance <= 0.1):
-            speed = 0.03
+            speed = 0.022
         elif(distance <= 0.3):
-            speed = 0.2
+            speed = 0.066
         elif(distance <= 0.6):
-            speed = 0.6
+            speed = 0.13
         elif(distance <= 1.0):
-            speed = 0.8        
+            speed = 0.18
         else:
-            speed = 1.0
+            speed = 0.22
 
         return speed
 
@@ -497,8 +534,8 @@ class AutoNav(Node):
                 self.UI()
                 #self.check_can()
                 self.check_drink(exit_condition=DRINK_PRESENT)
-                #self.deliver()
-                self.check_can()
+                self.deliver()
+                #self.check_can()
                 self.check_drink(exit_condition=DRINK_NOT_PRESENT)
                 self.docking_phase_one()
         except Exception as e:
@@ -516,22 +553,17 @@ class AutoNav(Node):
             return True
         else:
             return False
-    def test(self):
-        while(1):
-            self.movebot(0.1)
-            time.sleep(0.5)
+
 def main(args=None):
 
     rclpy.init(args=args)
 
     auto_nav = AutoNav()
     #auto_nav.test()
-    auto_nav.procedure_loop()
+    #auto_nav.rotatebot(90)
+    #auto_nav.procedure_loop()
     #auto_nav.movebot()
-    #auto_nav.move_distance_by_odom_then_varify_using_lidar(0.30, 0)
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
+    auto_nav.move_distance_by_odom_then_varify_using_lidar(0.30, 0)
     #rclpy.spin(auto_nav)
     auto_nav.destroy_node()
     rclpy.shutdown()

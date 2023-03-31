@@ -28,6 +28,18 @@ from std_msgs.msg import String
 from std_msgs.msg import Int32
 from std_msgs.msg import Float32
 
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
+from nav_msgs.msg import OccupancyGrid
+import tf2_ros
+from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+import math
+import scipy.stats
+
 # constants
 rotatechange = 0.1
 speedchange = 0.05
@@ -47,6 +59,8 @@ DRINK_PRESENT = True
 DRINK_NOT_PRESENT = False
 DEBUG = False
 
+occ_bins = [-1, 0, 50, 100]
+map_bg_color = 1
 
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
@@ -133,6 +147,8 @@ class AutoNav(Node):
             qos_profile_sensor_data)
         self.occ_subscription  # prevent unused variable warning
         self.occdata = np.array([])
+        self.tfBuffer = tf2_ros.Buffer()
+        self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
         
         # create subscription to track lidar
         self.scan_subscription = self.create_subscription(
@@ -248,6 +264,95 @@ class AutoNav(Node):
         self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width))
         # print to file
         #np.savetxt(mapfile, self.occdata)
+        occdata = np.array(msg.data)
+        # compute histogram to identify bins with -1, values between 0 and below 50, 
+        # and values between 50 and 100. The binned_statistic function will also
+        # return the bin numbers so we can use that easily to create the image 
+        occ_counts, edges, binnum = scipy.stats.binned_statistic(occdata, np.nan, statistic='count', bins=occ_bins)
+        # get width and height of map
+        iwidth = msg.info.width
+        iheight = msg.info.height
+        # calculate total number of bins
+        total_bins = iwidth * iheight
+        # log the info
+        # self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0], occ_counts[1], occ_counts[2], total_bins))
+
+        # find transform to obtain base_link coordinates in the map frame
+        # lookup_transform(target_frame, source_frame, time)
+        try:
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            self.get_logger().info('No transformation found')
+            return
+            
+        cur_pos = trans.transform.translation
+        cur_rot = trans.transform.rotation
+        # self.get_logger().info('Trans: %f, %f' % (cur_pos.x, cur_pos.y))
+        # convert quaternion to Euler angles
+        roll, pitch, yaw = euler_from_quaternion(cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
+        # self.get_logger().info('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
+
+        # get map resolution
+        map_res = msg.info.resolution
+        # get map origin struct has fields of x, y, and z
+        map_origin = msg.info.origin.position
+        # get map grid positions for x, y position
+        self.grid_x = round((cur_pos.x - map_origin.x) / map_res)
+        self.grid_y = round(((cur_pos.y - map_origin.y) / map_res))
+        # self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
+
+        # binnum go from 1 to 3 so we can use uint8
+        # convert into 2D array using column order
+        odata = np.uint8(binnum.reshape(msg.info.height,msg.info.width))
+        # set current robot location to 0
+        odata[self.grid_y][self.grid_x] = 0
+        # create image from 2D array using PIL
+        img = Image.fromarray(odata)
+        # find center of image
+        i_centerx = iwidth/2
+        i_centery = iheight/2
+        # find how much to shift the image to move grid_x and grid_y to center of image
+        shift_x = round(self.grid_x - i_centerx)
+        shift_y = round(self.grid_y - i_centery)
+        # self.get_logger().info('Shift Y: %i Shift X: %i' % (shift_y, shift_x))
+
+        # pad image to move robot position to the center
+        # adapted from https://note.nkmk.me/en/python-pillow-add-margin-expand-canvas/ 
+        left = 0
+        right = 0
+        top = 0
+        bottom = 0
+        if shift_x > 0:
+            # pad right margin
+            right = 2 * shift_x
+        else:
+            # pad left margin
+            left = 2 * (-shift_x)
+            
+        if shift_y > 0:
+            # pad bottom margin
+            bottom = 2 * shift_y
+        else:
+            # pad top margin
+            top = 2 * (-shift_y)
+            
+        # create new image
+        new_width = iwidth + right + left
+        new_height = iheight + top + bottom
+        img_transformed = Image.new(img.mode, (new_width, new_height), map_bg_color)
+        img_transformed.paste(img, (left, top))
+
+        # rotate by 90 degrees so that the forward direction is at the top of the image
+        rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
+
+        # show the image using grayscale map
+        # plt.imshow(img, cmap='gray', origin='lower')
+        # plt.imshow(img_transformed, cmap='gray', origin='lower')
+        plt.imshow(rotated, cmap='gray', origin='lower')
+        plt.draw_all()
+        # pause to make sure the plot gets created
+        plt.pause(0.00000000001)
+
 
     def scan_callback(self, msg):
         #print('In scan_callback')
@@ -265,14 +370,6 @@ class AutoNav(Node):
     def push_button_callback(self, msg):
         print(f"push_button: {msg.data}")
         if(msg.data == "True"):
-            self.is_drink_present = DRINK_PRESENT
-        else:
-            self.is_drink_present = DRINK_NOT_PRESENT
-    def ultrasonic_sensor_callback(self, msg):
-        print(f"ultrasonic sensor: {msg.data}")
-        #print("ultrasonic sensor data ignored")
-        
-        if(msg.data <= 3):
             self.is_drink_present = DRINK_PRESENT
         else:
             self.is_drink_present = DRINK_NOT_PRESENT
@@ -348,6 +445,94 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
         return math.degrees(current_yaw) - math.degrees(target_yaw)
+
+    def pick_direction(self):
+        # self.get_logger().info('In pick direction:')
+        laser_ranges = self.laser_range.tolist()
+        # print(min(laser_ranges[46:90]))
+        # print('###################')
+        # print(laser_ranges)
+        # print('###################')
+        # self.front_dist = min(laser_ranges[0:14] + laser_ranges[346:])
+        self.front_dist = laser_ranges[0]
+        self.leftfront_dist = min(laser_ranges[15:45])
+        self.rightfront_dist = min(laser_ranges[315:345])
+        self.left_dist = min(laser_ranges[46:90])
+
+        # self.get_logger().info('Front Distance: %s' % str(self.front_dist))
+        # self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
+        # self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
+
+        # Logic for following the wall
+        # >d means no wall detected by that laser beam
+        # <d means a wall was detected by that laser beam
+        self.front_d = front_d #used to be 0.4
+        self.side_d = side_d  # wall distance from the robot. It will follow the left wall and maintain this distance
+        # Set turning speeds (to the left) in rad/s
+
+        # These values were determined by trial and error.
+        self.turning_speed_wf_fast = turning_speed_wf_fast * leftwallfollowing# Fast turn ideal = 1.0
+        self.turning_speed_wf_slow = turning_speed_wf_slow * leftwallfollowing # Slow turn = 0.4
+        self.turning_speed_wf_medium = turning_speed_wf_medium * leftwallfollowing
+        # Set movement speed
+        self.forward_speed = fastspeedchange
+        self.forward_speed_slow = slowspeedchange
+        # Set up twist message as msg
+        msg = Twist()
+        msg.linear.x = 0.0
+        msg.linear.y = 0.0
+        msg.linear.z = 0.0
+        msg.angular.x = 0.0
+        msg.angular.y = 0.0
+        msg.angular.z = 0.0
+
+
+        #if laserscan data is not valid, do not allow the bot to move
+        if self.laser_valid == False:
+            msg.linear.x = 0.0
+            msg.angular.z = 0.0
+
+        elif  ((self.leftfront_dist > self.side_d) and self.front_dist > self.front_d and self.rightfront_dist > self.side_d):
+
+                # print('wall still here')
+            self.wall_following_state = "turn right"
+            msg.linear.x = self.forward_speed
+            msg.angular.z = -self.turning_speed_wf_slow # turn right to avoid wall
+
+        elif self.leftfront_dist > self.side_d and self.front_dist > self.front_d and self.rightfront_dist < self.side_d:
+            # print('here4')
+            self.wall_following_state = "search for wall"
+            msg.linear.x = self.forward_speed_slow
+            msg.angular.z = self.turning_speed_wf_slow  # turn left to find wall
+
+        elif self.leftfront_dist < self.side_d and self.front_dist < self.front_d and self.rightfront_dist > self.side_d:
+            # print('here5')
+            self.wall_following_state = "turn right"
+            msg.angular.z = -self.turning_speed_wf_fast
+
+        elif self.leftfront_dist > self.side_d and self.front_dist < self.front_d and self.rightfront_dist < self.side_d:
+            # print('here6')
+            self.wall_following_state = "turn right"
+            msg.angular.z = -self.turning_speed_wf_fast
+
+        elif self.leftfront_dist < self.side_d and self.front_dist < self.front_d and self.rightfront_dist < self.side_d:
+            # print('here7')
+            self.wall_following_state = "turn right"
+            msg.angular.z = -self.turning_speed_wf_fast
+
+        elif self.leftfront_dist < self.side_d and self.front_dist > self.front_d and self.rightfront_dist < self.side_d:
+            # print('here8')
+            # Go straight ahead
+            # print("left")
+            self.wall_following_state = "find wall"
+            msg.linear.x = self.forward_speed
+            msg.angular.z = self.turning_speed_wf_slow
+
+        else:
+            pass
+
+        # Send velocity command to the robot
+        self.publisher_.publish(msg) 
 
     def rotatebot_with_one_time_distance_checking(self, rot_angle, checking_distance, checking_index):
         #checking the distance at checking_index inside lidar data against the checking_distance.

@@ -66,7 +66,7 @@ forward_op = [
     [(1.55, 0.30, -90), (0.8, 1.120, 0)],
     [(0.5, 1.35, -90), (0.8, 1.120, 0)],
     [(0.5, 1.35, -90), (1.60, 0.40, 0)],
-    [(0.1, 1.55, -90), (2.440, 90), (1.88, 0.4, 0)],
+    [(0.15, 1.55, -90), (2.440, 0.5, 90), (1.58, 0.4, 0)],
     [(1.55, 0.30, -90), (1.60, 0.40, 90)],
 ]
 
@@ -75,7 +75,7 @@ reverse_op = [
     [(0.8, 0.5, 90), (1.55, 0.2, 0)],
     [(0.8, 0.5, 90), (0.5, 0.2, 0)],
     [(1.6, 0.5, 90), (0.5, 0.2, 0)],
-    [(1.88, 0.4, 90), (2.440, 0.5, 90), (0.5, 0.4, 90)],
+    [(1.58, 0.4, -90), (2.440, 0.5, 90), (0.46, 0.4, 0)],
     [(1.6, 0.4, 90), (1.4, 0.4, 90), (0.8, 0.5, 90), (0.2, 90)],
 ]
 
@@ -228,7 +228,7 @@ class AutoNav(Node):
 
         #print(f"self.previous_x = {self.previous_x}")
         #print(f"self.previous_y = {self.previous_y}")
-        print(f"self.linear_distance = {self.linear_distance}")
+        #print(f"self.linear_distance = {self.linear_distance}")
 
     def occ_callback(self, msg):
         # self.get_logger().info('In occ_callback')
@@ -257,8 +257,10 @@ class AutoNav(Node):
         #np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
         self.laser_range[self.laser_range==0] = np.nan
-        if(DEBUG):
-            print(self.laser_range)
+
+        #print("\n\n\n")
+        #print(self.laser_range)
+        #print("\n\n\n")
 
     def push_button_callback(self, msg):
         print(f"push_button: {msg.data}")
@@ -276,9 +278,9 @@ class AutoNav(Node):
             self.is_drink_present = DRINK_NOT_PRESENT
     def weight_sensor_callback(self, msg):
         print(f"weight sensor: {msg.data}")
-        print("weight_sensor data ignored")
-        return
-        if(msg.data >= 100000):
+        #print("weight_sensor data ignored")
+        #return
+        if(msg.data >= 120000):
             self.is_drink_present = DRINK_PRESENT
         else:
             self.is_drink_present = DRINK_NOT_PRESENT
@@ -288,10 +290,14 @@ class AutoNav(Node):
     def rotatebot(self, rot_angle):
         if(rot_angle == 0):
             return
-        
-        # self.get_logger().info('In rotatebot')
+        different_angle = 180
 
-        # create Twist object
+        different_angle = self.rotate_unsafe(rot_angle)
+        while(abs(different_angle) > 0.05):
+            different_angle = self.rotate_unsafe(-different_angle)
+        
+
+    def rotate_unsafe(self, rot_angle):
         twist = Twist()
         
         # get current yaw angle
@@ -313,6 +319,7 @@ class AutoNav(Node):
         # set linear speed to zero so the TurtleBot rotates on the spot
         twist.linear.x = 0.0
         # set the direction to rotate
+
         twist.angular.z = c_change_dir * rotatechange
         # start rotation
         self.publisher_.publish(twist)
@@ -340,6 +347,7 @@ class AutoNav(Node):
         twist.angular.z = 0.0
         # stop the rotation
         self.publisher_.publish(twist)
+        return math.degrees(current_yaw) - math.degrees(target_yaw)
 
     def rotatebot_with_one_time_distance_checking(self, rot_angle, checking_distance, checking_index):
         #checking the distance at checking_index inside lidar data against the checking_distance.
@@ -380,7 +388,7 @@ class AutoNav(Node):
                     print(f"remaining_distance: {remaining_distance} = {target_distance} - {final_distance} + {initial_distance}")
                     speed = self.choose_speed(remaining_distance)
                     # if the list is not empty
-                    if(remaining_distance < 0 or self.laser_range[lidar_checking_index] <= 0.2):
+                    if(remaining_distance < 0):
                         self.stopbot()
                         break
                     else:
@@ -421,20 +429,21 @@ class AutoNav(Node):
     def choose_speed(self, distance):
         if(distance <= 0.1):
             speed = 0.022
-        elif(distance <= 0.3):
-            speed = 0.066
+        elif(distance <= 0.2):
+            speed = 0.10
         elif(distance <= 0.6):
-            speed = 0.13
+            speed = 0.16
         elif(distance <= 1.0):
-            speed = 0.18
+            speed = 0.16
         else:
-            speed = 0.20
+            speed = 0.16
 
         return speed
 
     def deliver_phase_two(self):
         #additional procedure for table 6
         try:
+            print("deliver_phase_two")
             self.move_distance_by_odom_then_varify_using_lidar(0.94, front_angle, direction=1, is_using_lidar_to_check=True)
             while rclpy.ok():
                 if self.laser_range.size != 0:
@@ -474,11 +483,13 @@ class AutoNav(Node):
                 if(i >= len(vars)):
                     break
                 self.first_run = True
+                rclpy.spin_once(self)
                 if(self.laser_range.size != 0):
                     self.move_distance_by_odom_then_varify_using_lidar(vars[i][0], 0, vars[i][1], 1, False, 0.05)
                     if(vars[i][1] != 0):
                         self.rotatebot(vars[i][2])
                         self.first_run = True
+                        rclpy.spin_once(self)
                     i += 1
                 rclpy.spin_once(self)
             #special case for table 6
@@ -491,17 +502,21 @@ class AutoNav(Node):
 
     def docking_phase_one(self):
         try:
+            self.first_run = True
+            rclpy.spin_once(self)
             #returning to the dispenser
             vars = reverse_op[self.table_number-1]
             i = 0
             while rclpy.ok():
                 if(i>= len(vars)):
                     break
-                rclpy.spin_once(self)
                 if(self.laser_range.size != 0):
+                    self.first_run = True
                     self.move_distance_by_odom_then_varify_using_lidar(vars[i][0], back_angle, vars[i][1], -1, False, 0.05)
                     if(vars[i][1] != 0):
                         self.rotatebot(vars[i][2])
+                        self.first_run = True
+                        rclpy.spin_once(self)
                     i += 1
         except Exception as e:
             print(e)
@@ -575,13 +590,14 @@ def main(args=None):
     auto_nav = AutoNav()
     #auto_nav.test()
     # while(1):
+    #     rclpy.spin_once(auto_nav)
     #     auto_nav.rotatebot(-90)
     #     time.sleep(0.5)
     #     input("Press Enter to continue")
     auto_nav.procedure_loop()
     #auto_nav.movebot()
-    #auto_nav.move_distance_by_odom_then_varify_using_lidar(1.0, 0)
-    rclpy.spin(auto_nav)
+    #auto_nav.move_distance_by_odom_then_varify_using_lidar(1.0, 0, 0.3, -1)
+    #rclpy.spin(auto_nav)
     auto_nav.destroy_node()
     rclpy.shutdown()
 

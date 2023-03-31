@@ -85070,8 +85070,9 @@ twist:
 ### A Frictional Story Tale of A Guy who is Complacent Enough to Call Himself "Prince" ###
 
 Once a upon a time, there was a kingdom called Hard coding. 
-Her prominent prince, Prince,
 The bragging knight, 
+The prominent prince, 
+Prince,
 Aibeit unelegently, has slayed the lizard called wall-following.
 
 Time flies and date passes, 

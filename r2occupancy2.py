@@ -93,7 +93,7 @@ class Occupy(Node):
         # self.get_logger().info('Trans: %f, %f' % (cur_pos.x, cur_pos.y))
         # convert quaternion to Euler angles
         roll, pitch, yaw = euler_from_quaternion(cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
-        # self.get_logger().info('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
+        self.get_logger().info('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
 
         # get map resolution
         map_res = msg.info.resolution
@@ -102,7 +102,7 @@ class Occupy(Node):
         # get map grid positions for x, y position
         grid_x = round((cur_pos.x - map_origin.x) / map_res)
         grid_y = round(((cur_pos.y - map_origin.y) / map_res))
-        # self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
+        self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
 
         # binnum go from 1 to 3 so we can use uint8
         # convert into 2D array using column order

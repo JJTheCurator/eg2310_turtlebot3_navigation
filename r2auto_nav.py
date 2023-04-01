@@ -168,14 +168,6 @@ class AutoNav(Node):
         )
         self.push_button_subscription
 
-        self.ultrasonic_sensor_subscription = self.create_subscription(
-            Float32,
-            'ultrasonic_sensor',
-            self.ultrasonic_sensor_callback,
-            10,
-        )
-        self.ultrasonic_sensor_subscription
-
         self.weight_sensor_subscription = self.create_subscription(
             Float32,
             'weight_sensor',
@@ -242,6 +234,7 @@ class AutoNav(Node):
         self.previous_x = msg.pose.pose.position.x
         self.previous_y = msg.pose.pose.position.y
 
+        print(f"self.roll: {self.roll}; self.pitch: {self.pitch}; self.yaw: {self.yaw}")
         #print(f"self.previous_x = {self.previous_x}")
         #print(f"self.previous_y = {self.previous_y}")
         #print(f"self.linear_distance = {self.linear_distance}")
@@ -390,7 +383,8 @@ class AutoNav(Node):
         different_angle = 180
 
         different_angle = self.rotate_unsafe(rot_angle)
-        while(abs(different_angle) > 0.05):
+        while(abs(different_angle) > 0.25):
+            print(f"different_angle: {different_angle}")
             different_angle = self.rotate_unsafe(-different_angle)
         
 
@@ -444,7 +438,7 @@ class AutoNav(Node):
         twist.angular.z = 0.0
         # stop the rotation
         self.publisher_.publish(twist)
-        return math.degrees(current_yaw) - math.degrees(target_yaw)
+        return math.degrees(cmath.phase(c_target_yaw)) - math.degrees(current_yaw)
 
     def pick_direction(self):
         # self.get_logger().info('In pick direction:')
@@ -573,7 +567,7 @@ class AutoNav(Node):
                     print(f"remaining_distance: {remaining_distance} = {target_distance} - {final_distance} + {initial_distance}")
                     speed = self.choose_speed(remaining_distance)
                     # if the list is not empty
-                    if(remaining_distance < 0):
+                    if(remaining_distance < 0 or lidar_checking_distance >= self.laser_range[lidar_checking_index]):
                         self.stopbot()
                         break
                     else:
@@ -619,9 +613,9 @@ class AutoNav(Node):
         elif(distance <= 0.6):
             speed = 0.16
         elif(distance <= 1.0):
-            speed = 0.16
+            speed = 0.18
         else:
-            speed = 0.16
+            speed = 0.22
 
         return speed
 

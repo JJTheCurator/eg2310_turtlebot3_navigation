@@ -13,12 +13,12 @@ Clone our repository into the ros2 source folder in your computer and turtlebot:
 git clone https://github.com/JJTheCurator/eg2310_turtlebot3_navigation.git
 
 #### On your computer:
-  cd path_to_r2auto_nav/colcon_ws
-  colcon build
+    cd path_to_r2auto_nav/colcon_ws
+    colcon build
 
 #### On your turtlebot:
-  cd turtlebot3_ws
-  colcon build
+    cd turtlebot3_ws
+    colcon build
 
 
 ## Factory Check
@@ -26,17 +26,18 @@ First, we'll use the factory_test package to ensure everything is running correc
 
 #### On your Turtlebot:
 
-  ssh ubuntu@(ip-address-of-pi)
-  roslaunch turtlebot3_bringup turtlebot3_robot.launch
+    ssh ubuntu@(ip-address-of-pi)
+    roslaunch turtlebot3_bringup turtlebot3_robot.launch
 
 #### On your Laptop:
 
-  ros2 run auto_nav factory_test
-Follow the instructions displayed in your terminal. If everything works as expected, your system is ready to go.
+    ros2 run auto_nav factory_test
+  Follow the instructions displayed in your terminal. If everything works as expected, your system is ready to go.
 
 ## Actual Run
 #### For your TurtleBot:
-  ros2 run py_pubsub talker
+    ros2 run py_pubsub talker
 
 #### On your computer:
-  ros2 run r2auto_nav auto_nav
+    ros2 run r2auto_nav auto_nav
+  Follow the instructions displayed in your terminal. If everything works as expected, your robot will deliver the drink and return to the dispenser.

@@ -65,24 +65,6 @@ map_bg_color = 1
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
 
-# forward_op = [
-#     [(0.30, 0)],
-#     [(0.30, -90), (1.120, 0)],
-#     [(1.35, -90), (1.120, 0)],
-#     [(1.35, -90), (0.40, 0)],
-#     [(1.35, -90), (0.40, -90), (0.40, 90), (0.40, 90), (0.30, 0)],
-#     [(0.30, -90), (0.40, 90)],
-# ]
-
-# forward_op = [
-#     [(1.55, 0.30, 0)],
-#     [(1.55, 0.30, -90), (0.8, 1.120, 0)],
-#     [(0.5, 1.35, -90), (0.8, 1.120, 0)],
-#     [(0.5, 1.35, -90), (1.60, 0.40, 0)],
-#     [(0.15, 1.55, -90), (2.440, 0.5, 90), (1.58, 0.4, 0)],
-#     [(1.55, 0.30, -90), (1.60, 0.40, 90), (0.92, 1.2, 0)],
-# ]
-
 half_pi = math.pi / 2
 
 # (travelling distance, lidar checking distance, turning angle)
@@ -104,39 +86,10 @@ reverse_op = [
     [(1.6, 0.4, -half_pi), (1.8, 0.4, -half_pi), (1.65, 0.5, half_pi), (1.6, 0.2, 0)],
 ]
 
-# reverse_op = [
-#     [()],
-#     [(0.8, 0.5, half_pi)],
-#     [(0.8, 0.5, half_pi)],
-#     [(1.6, 0.5, half_pi)],
-#     [(1.58, 0.4, -half_pi), (2.440, 0.5, half_pi)],
-#     [(1.6, 0.4, half_pi), (1.4, 0.4, half_pi), (0.8, 0.5, half_pi)],
-# ]
-
-
-
-# kp = 0.1
-# ki = 0.05
-# kd = 0.05
-
-# kp = 0.1
-# ki = 0.09
-# kd = 0.12
-
 kp = 0.1
 ki = 0.1
 kd = 0.38
 
-#ki = 0.08
-# kd = 0.362
-
-#ki = 0.11
-#kd = 0.35
-
-#wall following pid
-kp_w = 300.0
-kd_w = 0.1
-ki_w = 0.11
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -190,17 +143,6 @@ class AutoNav(Node):
         # self.get_logger().info('Created subscriber')
         self.imu_subscription
 
-        # create subscription to track occupancy
-        # self.occ_subscription = self.create_subscription(
-        #     OccupancyGrid,
-        #     'map',
-        #     self.occ_callback,
-        #     qos_profile_sensor_data)
-        # self.occ_subscription  # prevent unused variable warning
-        # self.occdata = np.array([])
-        # self.tfBuffer = tf2_ros.Buffer()
-        # self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
-        
         # create subscription to track lidar
         self.scan_subscription = self.create_subscription(
             LaserScan,
@@ -211,14 +153,6 @@ class AutoNav(Node):
         self.laser_range = np.array([])
         self.one_meter_counter = 0
 
-        # self.push_button_subscription = self.create_subscription(
-        #     String,
-        #     'push_button',
-        #     self.push_button_callback,
-        #     10,
-        # )
-        # self.push_button_subscription
-
         self.weight_sensor_subscription = self.create_subscription(
             Float32,
             'weight_sensor',
@@ -226,14 +160,6 @@ class AutoNav(Node):
             10,
         )
         self.weight_sensor_subscription
-
-        # self.nfc_subscription = self.create_subscription(
-        #     String,
-        #     "nfc",
-        #     self.nfc_callback,
-        #     10,
-        # )
-        # self.nfc_subscription
 
         #UI logic
         self.table_number = 0
@@ -269,22 +195,13 @@ class AutoNav(Node):
             self.wall_distance = self.laser_range[left_angle]
         else:
             self.wall_distance = 0.55
-        #print(f"self.grid_angle: {self.grid_angle}\nself.wall_distance: {self.wall_distance}")
-        #input("init check[enter]")
 
-        #pid for 
+        #pid 
         self.p_error = 0.0
         self.i_error = 0.0
         self.d_error = 0.0
         self.prev_error = 0.0
         self.error_sum = 0.0
-
-        #pid for wall following
-        self.w_p_error = 0.0
-        self.w_i_error = 0.0
-        self.w_d_error = 0.0
-        self.w_prev_error = 0.0
-        self.w_error_sum = 0.0
 
 
     def check_drink(self, exit_condition):
@@ -296,10 +213,6 @@ class AutoNav(Node):
                 print("Drink can is detected. Proceeding.")
                 break
             time.sleep(0.005)
-        # if(exit_condition == DRINK_NOT_PRESENT):
-            # print("Drink is not present, proceeding.")
-        # else:
-            # print("Drink is present, proceeding")
 
     def imu_callback(self, msg):
         # self.get_logger().info('In odom_callback')
@@ -308,9 +221,6 @@ class AutoNav(Node):
         
         #print(f"odom self.yaw: {self.yaw}\nself.grid_angle: {self.grid_angle}")
         self.tick += 1
-        #print(f"self.previous_x = {self.previous_x}")
-        #print(f"self.previous_y = {self.previous_y}")
-        #print(f"self.linear_distance = {self.linear_distance}")
 
     def odom_callback(self, msg):
         # self.get_logger().info('In odom_callback')
@@ -340,106 +250,11 @@ class AutoNav(Node):
         #print(f"self.previous_y = {self.previous_y}")
         #print(f"self.linear_distance = {self.linear_distance}")
 
-    def occ_callback(self, msg):
-        # create numpy array
-        occdata = np.array(msg.data)
-        # compute histogram to identify bins with -1, values between 0 and below 50, 
-        # and values between 50 and 100. The binned_statistic function will also
-        # return the bin numbers so we can use that easily to create the image 
-        oc2 = occdata + 1
-        self.occdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
-        #np.savetxt(mapfile, self.occdata)
-        occ_counts, edges, binnum = scipy.stats.binned_statistic(occdata, np.nan, statistic='count', bins=occ_bins)
-        # get width and height of map
-        iwidth = msg.info.width
-        iheight = msg.info.height
-        # calculate total number of bins
-        total_bins = iwidth * iheight
-        # log the info
-        # self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0], occ_counts[1], occ_counts[2], total_bins))
-
-        # find transform to obtain base_link coordinates in the map frame
-        # lookup_transform(target_frame, source_frame, time)
-        try:
-            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
-        except (LookupException, ConnectivityException, ExtrapolationException) as e:
-            self.get_logger().info('No transformation found')
-            return
-            
-        cur_pos = trans.transform.translation
-        cur_rot = trans.transform.rotation
-        print('Trans: %f, %f' % (cur_pos.x, cur_pos.y))
-        # convert quaternion to Euler angles
-        roll, pitch, yaw = euler_from_quaternion(cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
-        print('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
-
-        # get map resolution
-        # map_res = msg.info.resolution
-        # # get map origin struct has fields of x, y, and z
-        # map_origin = msg.info.origin.position
-        # # get map grid positions for x, y position
-        # grid_x = round((cur_pos.x - map_origin.x) / map_res)
-        # grid_y = round(((cur_pos.y - map_origin.y) / map_res))
-        # #self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
-
-        # # binnum go from 1 to 3 so we can use uint8
-        # # convert into 2D array using column order
-        # odata = np.uint8(binnum.reshape(msg.info.height,msg.info.width))
-        # # set current robot location to 0
-        # odata[grid_y][grid_x] = 0
-        # # create image from 2D array using PIL
-        # img = Image.fromarray(odata)
-        # # find center of image
-        # i_centerx = iwidth/2
-        # i_centery = iheight/2
-        # # find how much to shift the image to move grid_x and grid_y to center of image
-        # shift_x = round(grid_x - i_centerx)
-        # shift_y = round(grid_y - i_centery)
-        # # self.get_logger().info('Shift Y: %i Shift X: %i' % (shift_y, shift_x))
-
-        # # pad image to move robot position to the center
-        # # adapted from https://note.nkmk.me/en/python-pillow-add-margin-expand-canvas/ 
-        # left = 0
-        # right = 0
-        # top = 0
-        # bottom = 0
-        # if shift_x > 0:
-        #     # pad right margin
-        #     right = 2 * shift_x
-        # else:
-        #     # pad left margin
-        #     left = 2 * (-shift_x)
-            
-        # if shift_y > 0:
-        #     # pad bottom margin
-        #     bottom = 2 * shift_y
-        # else:
-        #     # pad top margin
-        #     top = 2 * (-shift_y)
-            
-        # # create new image
-        # new_width = iwidth + right + left
-        # new_height = iheight + top + bottom
-        # img_transformed = Image.new(img.mode, (new_width, new_height), map_bg_color)
-        # img_transformed.paste(img, (left, top))
-
-        # # rotate by 90 degrees so that the forward direction is at the top of the image
-        # rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
-
-        # # show the image using grayscale map
-        # # plt.imshow(img, cmap='gray', origin='lower')
-        # # plt.imshow(img_transformed, cmap='gray', origin='lower')
-        # #plt.imshow(rotated, cmap='gray', origin='lower')
-        # #plt.draw_all()
-        # # pause to make sure the plot gets created
-        # #plt.pause(0.00000000001)
-
     def scan_callback(self, msg):
         self.laser_range = np.array(msg.ranges)
         #np.savetxt(scanfile, self.laser_range)
         self.laser_range[self.laser_range==0] = np.nan
 
-    def push_button_callback(self, msg):
         print("returned from nfc_callback. Nothing is being done.")
         return
         print(f"push_button: {msg.data}")
@@ -455,10 +270,6 @@ class AutoNav(Node):
             self.is_drink_present = DRINK_PRESENT
         else:
             self.is_drink_present = DRINK_NOT_PRESENT
-    def nfc_callback(self, msg):
-        print("returned from nfc_callback. Nothing is being done.")
-        return
-        self.docking_phase_two()
     
     def rotatebot(self, rot_angle):
         print(f"in rotatebot, rot_angle: {rot_angle}")
@@ -481,19 +292,6 @@ class AutoNav(Node):
         rclpy.spin_once(self)
         rclpy.spin_once(self)
         return
-
-        print(f"in rotatebot, rot_angle: {rot_angle}")
-        #rot_angle += 180 / math.pi * (self.second_yaw - self.first_yaw)
-        if(rot_angle == 0):
-            return
-        different_angle = 180
-        
-        different_angle = self.rotate_unsafe(rot_angle, 4.0)
-        while(abs(different_angle) > 0.25):
-            print(f"different_angle: {different_angle}")
-            different_angle = self.rotate_unsafe(-different_angle, 1.0)
-        self.first_run = True
-        rclpy.spin_once(self)
     
     def rotate_to_angle(self, target_angle, angular_velocity=rotatechange):
         twist = Twist()
@@ -608,11 +406,6 @@ class AutoNav(Node):
     def calculate_angular_velocity_using_pid(self, current_yaw, target_yaw):
         error = target_yaw - current_yaw
 
-        # if(error >= math.pi()):
-        #     error -= 2*math.pi()
-        # elif(error < math.pi()):
-        #     error += 2*math.pi()
-
         k = kp * error
         i = ki * self.error_sum
         self.error_sum += error
@@ -625,23 +418,6 @@ class AutoNav(Node):
             angular_velocity = 0.02
         if(angular_velocity < -0.02):
             angular_velocity = -0.02        
-
-        return angular_velocity
-
-    def calculate_wall_following_pid(self, current_distance, wall_distance):
-        error = wall_distance - current_distance
-
-        k = kp_w * error
-        i = ki * self.w_error_sum
-        self.w_error_sum += error
-        d = kd * (error - self.w_prev_error)
-        self.prev_error = error
-
-        angular_velocity = k + i + d
-        if(angular_velocity > 0.02):
-            angular_velocity = 0.02
-        if(angular_velocity < -0.02):
-            angular_velocity = -0.02
 
         return angular_velocity
 
@@ -727,18 +503,6 @@ class AutoNav(Node):
 
     def choose_speed(self, distance):
         return 0.18
-        if(distance <= 0.1):
-            speed = 0.022
-        elif(distance <= 0.2):
-            speed = 0.10
-        elif(distance <= 0.6):
-            speed = 0.16
-        elif(distance <= 1.0):
-            speed = 0.18
-        else:
-            speed = 0.21
-
-        return speed
 
     def deliver_phase_two(self):
         #additional procedure for table 6
@@ -963,19 +727,7 @@ def main(args=None):
     rclpy.init(args=args)
 
     auto_nav = AutoNav()
-    # while(1):
-    #     rclpy.spin_once(auto_nav)
-    #     auto_nav.rotatebot(-half_pi)
-    #     time.sleep(0.5)
-    #     input("Press Enter to continue")
-    #auto_nav.table_number = 1
-    #auto_nav.docking_phase_two()
     auto_nav.procedure_loop()
-    #auto_nav.movebot()
-    #rclpy.spin_once(auto_nav)
-    #auto_nav.move_distance_by_odom_then_varify_using_lidar(1.27, 0, 0.3, -1)
-    #input()
-    #auto_nav.move_distance_by_odom_then_varify_using_lidar(1.27, 0, 0.3, -1)
     rclpy.spin(auto_nav)
     auto_nav.destroy_node()
     rclpy.shutdown()

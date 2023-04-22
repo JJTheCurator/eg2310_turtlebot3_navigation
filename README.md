@@ -8,7 +8,8 @@ In the repository, r2auto_nav.py is the navigation code to be ran on your comput
 To set up your laptop and TurtleBot, perform the following steps:
 
 Follow the instructions here to set up your laptop and TurtleBot https://emanual.robotis.com/docs/en/platform/turtlebot3/quick-start/
-    Clone our repository into the ros2 source folder in your computer and turtlebot:
+
+Clone our repository into the ros2 source folder in your computer and turtlebot:
 
 git clone https://github.com/JJTheCurator/eg2310_turtlebot3_navigation.git
 
